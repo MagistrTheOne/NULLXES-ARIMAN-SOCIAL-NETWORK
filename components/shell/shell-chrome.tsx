@@ -1,12 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { authClient } from "@/lib/auth-client";
+import { signOut } from "@/lib/auth-client";
+import { useCurrentUser } from "@/lib/hooks/use-current-user";
 
 const nav = [
   { href: "/profile", label: "Profile" },
@@ -19,12 +20,19 @@ const nav = [
 
 export function ShellChrome({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
+  const { user, isPending } = useCurrentUser();
 
   return (
     <div className="flex min-h-screen bg-background text-foreground">
       <aside className="flex w-60 shrink-0 flex-col border-r border-border bg-card">
-        <div className="border-b border-border px-4 py-3 font-mono text-xs tracking-wide text-muted-foreground">
-          NULLXES ARIMAN
+        <div className="border-b border-border px-4 py-3">
+          <div className="font-mono text-xs tracking-wide text-muted-foreground uppercase">
+            NULLXES ARIMAN
+          </div>
+          {!isPending && user?.email ? (
+            <div className="mt-1 truncate font-mono text-[10px] text-muted-foreground">{user.email}</div>
+          ) : null}
         </div>
         <ScrollArea className="flex-1 px-2 py-3">
           <nav className="flex flex-col gap-1">
@@ -41,9 +49,11 @@ export function ShellChrome({ children }: { children: React.ReactNode }) {
                   href={item.href}
                   className={cn(
                     buttonVariants({
-                      variant: active ? "secondary" : "ghost",
+                      variant: "outline",
+                      size: "sm",
                     }),
-                    "justify-start font-normal",
+                    "justify-start border-border font-normal shadow-none",
+                    active ? "bg-muted text-foreground" : "bg-transparent text-muted-foreground",
                   )}
                 >
                   {item.label}
@@ -57,8 +67,17 @@ export function ShellChrome({ children }: { children: React.ReactNode }) {
           <Button
             variant="outline"
             size="sm"
-            className="w-full border-border text-muted-foreground"
-            onClick={() => void authClient.signOut()}
+            className="w-full border-border bg-transparent text-muted-foreground shadow-none hover:bg-muted"
+            onClick={() =>
+              void signOut({
+                fetchOptions: {
+                  onSuccess: () => {
+                    router.push("/login");
+                    router.refresh();
+                  },
+                },
+              })
+            }
           >
             Sign out
           </Button>

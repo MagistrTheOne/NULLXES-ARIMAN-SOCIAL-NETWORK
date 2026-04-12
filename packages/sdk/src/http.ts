@@ -5,6 +5,18 @@ function joinUrl(baseUrl: string, path: string) {
   return `${baseUrl.replace(/\/$/, "")}${path.startsWith("/") ? path : `/${path}`}`;
 }
 
+export class ArimanHttpError extends Error {
+  readonly status: number;
+  readonly body: unknown;
+
+  constructor(status: number, message: string, body?: unknown) {
+    super(message);
+    this.name = "ArimanHttpError";
+    this.status = status;
+    this.body = body;
+  }
+}
+
 export async function apiJson<T>(
   config: ArimanSdkConfig | undefined,
   path: string,
@@ -25,12 +37,15 @@ export async function apiJson<T>(
   try {
     json = text ? JSON.parse(text) : null;
   } catch {
-    throw new Error(`Invalid JSON (${res.status}) from ${url}: ${text.slice(0, 200)}`);
+    throw new ArimanHttpError(
+      res.status,
+      `Invalid JSON (${res.status}) from ${url}: ${text.slice(0, 200)}`,
+    );
   }
   if (!res.ok) {
     const err = json as { error?: string } | null;
     const msg = err && typeof err.error === "string" ? err.error : `HTTP ${res.status}`;
-    throw new Error(msg);
+    throw new ArimanHttpError(res.status, msg, json);
   }
   return json as T;
 }

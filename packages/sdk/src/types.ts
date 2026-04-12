@@ -71,3 +71,56 @@ export type ArimanSdkConfig = {
   /** Origin without trailing slash, e.g. `https://app.example.com`. Empty string uses relative URLs (browser same-origin). */
   baseUrl?: string;
 };
+
+export type ConversationSummary = {
+  conversationId: string;
+  joinedAt: string;
+};
+
+export type ListConversationsResponse = {
+  conversations: ConversationSummary[];
+};
+
+export type ConversationMember = {
+  userId: string;
+};
+
+export type ConversationDetailResponse = {
+  conversationId: string;
+  peerUserId: string | null;
+  members: ConversationMember[];
+};
+
+export type ClipRow = {
+  id: string;
+  postId: string;
+  durationMs: number;
+  transcodeState: string;
+  hlsManifestKey: string | null;
+  posterFrameKey: string | null;
+  createdAt: string;
+};
+
+export type ClipWithPost = {
+  clip: ClipRow;
+  post: PostRow;
+};
+
+export type GetClipsResponse = {
+  clips: ClipWithPost[];
+};
+
+export type GetClipsParams = {
+  identityId: string;
+  limit?: number;
+};
+
+export type CreateClipBody = {
+  identityId: string;
+  body: string;
+};
+
+export type CreateClipResponse = {
+  post: PostRow;
+  clip: ClipRow;
+};

@@ -33,10 +33,14 @@ export function CryptoSettings() {
         key with peers so they can encrypt DM payloads to you.
       </p>
       <div className="space-y-2">
-        <Label>Your public key (base64)</Label>
-        <Input readOnly value={pub} className="border-border bg-secondary font-mono text-xs" />
+        <Label className="text-xs tracking-wide text-muted-foreground uppercase">Public key (base64)</Label>
+        <Input
+          readOnly
+          value={pub}
+          className="border border-border bg-background font-mono text-xs text-foreground shadow-none"
+        />
       </div>
-      <Button variant="outline" onClick={regenerate}>
+      <Button variant="outline" className="border-border bg-transparent shadow-none" onClick={regenerate}>
         Regenerate keys
       </Button>
     </div>

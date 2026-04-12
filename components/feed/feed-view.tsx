@@ -1,95 +1,160 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { createArimanSdk } from "@nullxes/ariman-sdk";
+import { userFacingApiError } from "@/lib/http-error-message";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 
 type Identity = { id: string; handle: string; displayName: string };
 type Post = { id: string; body: string; createdAt: string };
 
 export function FeedView() {
+  const sdk = useMemo(() => createArimanSdk(), []);
+
   const [identities, setIdentities] = useState<Identity[]>([]);
   const [activeIdentity, setActiveIdentity] = useState<string | null>(null);
   const [posts, setPosts] = useState<Post[]>([]);
   const [body, setBody] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [loadingMe, setLoadingMe] = useState(true);
+  const [loadingPosts, setLoadingPosts] = useState(false);
+  const [publishing, setPublishing] = useState(false);
 
   useEffect(() => {
-    void fetch("/api/users/me", { credentials: "include" })
-      .then((r) => r.json())
-      .then((d: { identities?: Identity[] }) => {
+    let cancelled = false;
+    setLoadingMe(true);
+    setError(null);
+    void (async () => {
+      try {
+        const d = await sdk.getMe();
+        if (cancelled) return;
         const ids = d.identities ?? [];
         setIdentities(ids);
         if (ids[0]) setActiveIdentity(ids[0].id);
-      });
-  }, []);
+      } catch (e) {
+        if (!cancelled) setError(userFacingApiError(e));
+      } finally {
+        if (!cancelled) setLoadingMe(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [sdk]);
 
-  const loadPosts = async (identityId: string) => {
-    const r = await fetch(`/api/posts?identityId=${encodeURIComponent(identityId)}`, {
-      credentials: "include",
-    });
-    const d = await r.json();
-    if (!r.ok) {
-      setError(d.error ?? "Failed to load posts");
-      return;
-    }
-    setPosts(d.posts ?? []);
-  };
+  const loadPosts = useCallback(
+    async (identityId: string) => {
+      setLoadingPosts(true);
+      setError(null);
+      try {
+        const d = await sdk.getFeed({ identityId });
+        setPosts((d.posts ?? []) as Post[]);
+      } catch (e) {
+        setError(userFacingApiError(e));
+      } finally {
+        setLoadingPosts(false);
+      }
+    },
+    [sdk],
+  );
 
   useEffect(() => {
     if (activeIdentity) void loadPosts(activeIdentity);
-  }, [activeIdentity]);
+    else setPosts([]);
+  }, [activeIdentity, loadPosts]);
 
-  async function createPost() {
+  async function publish() {
     if (!activeIdentity) return;
+    setPublishing(true);
     setError(null);
-    const r = await fetch("/api/posts", {
-      method: "POST",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ identityId: activeIdentity, body }),
-    });
-    const d = await r.json();
-    if (!r.ok) {
-      setError(d.error ?? "Failed to create post");
-      return;
+    try {
+      await sdk.createPost({ identityId: activeIdentity, body });
+      setBody("");
+      await loadPosts(activeIdentity);
+    } catch (e) {
+      setError(userFacingApiError(e));
+    } finally {
+      setPublishing(false);
     }
-    setBody("");
-    await loadPosts(activeIdentity);
   }
 
   return (
     <div className="flex h-full flex-col p-6">
-      <h1 className="font-mono text-lg text-foreground">Feed</h1>
-      <div className="mt-4 flex flex-wrap gap-2">
-        {identities.map((i) => (
+      <Label className="font-mono text-lg tracking-wide text-foreground uppercase">Feed</Label>
+
+      <div className="mt-4">
+        <Label className="text-xs tracking-wide text-muted-foreground uppercase">Identity</Label>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {loadingMe ? (
+            <>
+              <Skeleton className="h-8 w-24 animate-none bg-muted/50" />
+              <Skeleton className="h-8 w-24 animate-none bg-muted/50" />
+            </>
+          ) : (
+            identities.map((i) => (
+              <Button
+                key={i.id}
+                size="sm"
+                variant="outline"
+                className={`border-border shadow-none ${
+                  activeIdentity === i.id ? "bg-muted text-foreground" : "bg-transparent"
+                }`}
+                onClick={() => setActiveIdentity(i.id)}
+              >
+                @{i.handle}
+              </Button>
+            ))
+          )}
+        </div>
+      </div>
+
+      <Card className="mt-6 shadow-none ring-1 ring-border">
+        <CardHeader className="space-y-1 pb-2">
+          <Label className="text-xs tracking-wide text-muted-foreground uppercase">Composer</Label>
+        </CardHeader>
+        <CardContent className="space-y-2 pt-0">
+          <Textarea
+            value={body}
+            onChange={(e) => setBody(e.target.value)}
+            placeholder="Post body…"
+            className="min-h-[80px] border border-border bg-background text-foreground shadow-none"
+          />
           <Button
-            key={i.id}
-            size="sm"
-            variant={activeIdentity === i.id ? "secondary" : "outline"}
-            onClick={() => setActiveIdentity(i.id)}
+            variant="outline"
+            className="border-border shadow-none"
+            disabled={publishing || !activeIdentity}
+            onClick={() => void publish()}
           >
-            @{i.handle}
+            {publishing ? "Publishing…" : "Publish"}
           </Button>
-        ))}
-      </div>
-      <div className="mt-6 space-y-2 border border-border bg-card p-4">
-        <Textarea
-          value={body}
-          onChange={(e) => setBody(e.target.value)}
-          placeholder="Post body…"
-          className="min-h-[80px] border-border bg-secondary"
-        />
-        <Button onClick={() => void createPost()}>Publish</Button>
-      </div>
+        </CardContent>
+      </Card>
+
       {error ? <p className="mt-2 text-sm text-destructive">{error}</p> : null}
-      <ul className="mt-6 space-y-3">
-        {posts.map((p) => (
-          <li key={p.id} className="border-b border-border pb-3 text-sm text-foreground">
-            <p className="whitespace-pre-wrap">{p.body}</p>
-            <p className="mt-1 font-mono text-xs text-muted-foreground">{p.createdAt}</p>
-          </li>
-        ))}
+
+      <Label className="mt-6 text-xs tracking-wide text-muted-foreground uppercase">Posts</Label>
+      <ul className="mt-2 space-y-3">
+        {loadingPosts ? (
+          <>
+            <Skeleton className="h-20 animate-none bg-muted/50" />
+            <Skeleton className="h-20 animate-none bg-muted/50" />
+          </>
+        ) : (
+          posts.map((p) => (
+            <li key={p.id}>
+              <Card className="shadow-none ring-1 ring-border">
+                <CardContent className="pt-4 text-sm text-foreground">
+                  <p className="whitespace-pre-wrap">{p.body}</p>
+                  <p className="mt-2 font-mono text-xs text-muted-foreground">{p.createdAt}</p>
+                </CardContent>
+              </Card>
+            </li>
+          ))
+        )}
       </ul>
     </div>
   );

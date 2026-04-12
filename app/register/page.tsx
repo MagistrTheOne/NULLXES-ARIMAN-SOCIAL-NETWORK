@@ -3,8 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { signIn, useSession } from "@/lib/auth-client";
-import { signInErrorMessage } from "@/lib/auth-sign-in-error";
+import { signUp, useSession } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -13,20 +12,14 @@ import { Label } from "@/components/ui/label";
 const fieldClass =
   "border border-border bg-background text-foreground shadow-none";
 
-export default function LoginPage() {
+export default function RegisterPage() {
   const router = useRouter();
   const { data, isPending } = useSession();
-  const [nextPath, setNextPath] = useState("/messages");
+  const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState<"Invalid credentials" | "Request failed" | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const next = params.get("next");
-    if (next && next.startsWith("/") && !next.startsWith("//")) setNextPath(next);
-  }, []);
 
   useEffect(() => {
     if (isPending) return;
@@ -40,16 +33,20 @@ export default function LoginPage() {
     e.preventDefault();
     setLoading(true);
     setError(null);
-    const { error: err } = await signIn.email({
+    const trimmed = displayName.trim();
+    const local = email.trim().split("@")[0] || "User";
+    const name = trimmed || local;
+    const { error: err } = await signUp.email({
       email: email.trim(),
       password,
+      name,
     });
     setLoading(false);
     if (err) {
-      setError(signInErrorMessage(err));
+      setError(err.message ?? "Request failed");
       return;
     }
-    router.replace(nextPath);
+    router.replace("/messages");
     router.refresh();
   }
 
@@ -65,6 +62,20 @@ export default function LoginPage() {
         </CardHeader>
         <CardContent>
           <form onSubmit={onSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="name" className="text-xs tracking-wide text-muted-foreground uppercase">
+                Display name
+              </Label>
+              <Input
+                id="name"
+                type="text"
+                autoComplete="name"
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+                placeholder="Optional — defaults to email prefix"
+                className={fieldClass}
+              />
+            </div>
             <div className="space-y-2">
               <Label htmlFor="email" className="text-xs tracking-wide text-muted-foreground uppercase">
                 Email
@@ -86,13 +97,14 @@ export default function LoginPage() {
               <Input
                 id="password"
                 type="password"
-                autoComplete="current-password"
+                autoComplete="new-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
                 minLength={8}
                 className={fieldClass}
               />
+              <p className="font-mono text-[10px] text-muted-foreground">Minimum 8 characters</p>
             </div>
             {error ? <p className="text-sm text-destructive">{error}</p> : null}
             <Button
@@ -101,16 +113,16 @@ export default function LoginPage() {
               disabled={busy}
               className="w-full border-border bg-transparent shadow-none"
             >
-              {busy ? "Please wait…" : "Sign in"}
+              {busy ? "Please wait…" : "Create account"}
             </Button>
           </form>
         </CardContent>
         <CardFooter className="flex justify-center border-t border-border pt-0">
           <Link
-            href="/register"
+            href="/login"
             className="font-mono text-[10px] text-muted-foreground underline underline-offset-2"
           >
-            Create account
+            Sign in
           </Link>
         </CardFooter>
       </Card>
