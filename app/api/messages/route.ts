@@ -92,6 +92,14 @@ export async function POST(request: Request) {
         NextResponse.json({ error: "Invalid peer user" }, { status: 400 }),
       );
     }
+    if (
+      e instanceof Error &&
+      (e.message === "INVALID_ENCRYPTION_VERSION" || e.message === "INVALID_CIPHERTEXT_ENVELOPE")
+    ) {
+      return withApiSecurityHeaders(
+        NextResponse.json({ error: "Invalid encrypted message payload" }, { status: 400 }),
+      );
+    }
     throw e;
   }
 }

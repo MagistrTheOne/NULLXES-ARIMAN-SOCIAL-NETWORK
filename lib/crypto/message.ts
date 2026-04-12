@@ -1,12 +1,13 @@
-export const CURRENT_ENCRYPTION_VERSION = 0;
+export const CURRENT_ENCRYPTION_VERSION = 1;
 
 export type StoredMessagePayload = {
-  body: string;
-  encryptionVersion: typeof CURRENT_ENCRYPTION_VERSION;
+  body: string | null;
+  ciphertext: string | null;
+  encryptionVersion: number;
 };
 
-export function assertPlaintextPhase(payload: StoredMessagePayload) {
-  if (payload.encryptionVersion !== CURRENT_ENCRYPTION_VERSION) {
-    throw new Error("Unsupported encryption version");
+export function assertPlaintextPhase(payload: Pick<StoredMessagePayload, "encryptionVersion">) {
+  if (payload.encryptionVersion !== 0) {
+    throw new Error("Unsupported encryption version for plaintext path");
   }
 }

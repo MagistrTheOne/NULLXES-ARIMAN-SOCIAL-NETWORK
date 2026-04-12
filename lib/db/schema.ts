@@ -256,7 +256,9 @@ export const messages = pgTable(
     senderUserId: uuid("sender_user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    body: text("body").notNull(),
+    body: text("body"),
+    ciphertext: text("ciphertext"),
+    senderPublicKey: text("sender_public_key"),
     encryptionVersion: integer("encryption_version").notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
       .notNull()
