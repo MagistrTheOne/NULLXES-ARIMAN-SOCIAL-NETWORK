@@ -1,6 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   createArimanSdk,
@@ -9,20 +16,38 @@ import {
   type MessageRow,
 } from "@nullxes/ariman-sdk";
 import { format } from "date-fns";
+import {
+  ArrowDown,
+  Loader2,
+  Mic,
+  MoreHorizontal,
+  Pencil,
+  Send,
+  Square,
+  Trash2,
+} from "lucide-react";
 import { userFacingApiError } from "@/lib/http-error-message";
 import { useCurrentUser } from "@/lib/hooks/use-current-user";
 import { shouldRouteToAiChat } from "@/lib/ai-mention";
 import { mentionQueryAtCaret } from "@/lib/mentions";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Label } from "@/components/ui/label";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { ConversationList } from "@/components/messages/conversation-list";
 import { NewMessageDialog } from "@/components/messages/new-message-dialog";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+
+const NEAR_BOTTOM_PX = 100;
+const DELETED_LABEL = "Message deleted";
 
 type ChatRow = {
   id: string;
@@ -47,7 +72,7 @@ function shortMentionFromAgentHandle(handle: string) {
 function mapServerMessage(m: MessageRow): ChatRow {
   const deleted = !!m.deletedAt;
   const text = deleted
-    ? "[Deleted]"
+    ? DELETED_LABEL
     : m.messageType === "voice"
       ? (m.transcript?.trim() || m.body?.trim() || "Voice message")
       : m.body?.trim() ||
@@ -73,6 +98,22 @@ function formatBubbleTime(iso: string) {
   return format(d, "HH:mm");
 }
 
+function formatRecordingDuration(ms: number) {
+  const totalS = Math.floor(ms / 1000);
+  const m = Math.floor(totalS / 60);
+  const s = totalS % 60;
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
+function pickRecorderMime(): string {
+  if (typeof MediaRecorder === "undefined") return "";
+  const c = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"];
+  for (const t of c) {
+    if (MediaRecorder.isTypeSupported(t)) return t;
+  }
+  return "";
+}
+
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -96,10 +137,22 @@ export function MessagesView() {
   const [mentionHits, setMentionHits] = useState<MentionCandidatesResponse | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState("");
+  const [jumpVisible, setJumpVisible] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const [recordingMs, setRecordingMs] = useState(0);
 
-  const bottomRef = useRef<HTMLDivElement | null>(null);
+  const viewportRef = useRef<HTMLDivElement | null>(null);
+  const bottomAnchorRef = useRef<HTMLDivElement | null>(null);
   const taRef = useRef<HTMLTextAreaElement | null>(null);
-  const voiceInputRef = useRef<HTMLInputElement | null>(null);
+  const editTaRef = useRef<HTMLTextAreaElement | null>(null);
+  const stickToBottomRef = useRef(true);
+  const prevTailIdRef = useRef<string | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const mediaChunksRef = useRef<Blob[]>([]);
+  const recordMimeRef = useRef("");
+  const recordStartedAtRef = useRef(0);
+  const recordTickRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
 
   const refreshSummaries = useCallback(async () => {
     setError(null);
@@ -176,7 +229,67 @@ export function MessagesView() {
   }, [activeId, loadMessages]);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    stickToBottomRef.current = true;
+    setJumpVisible(false);
+    prevTailIdRef.current = null;
+  }, [activeId]);
+
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = "auto") => {
+    const el = viewportRef.current;
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight, behavior });
+  }, []);
+
+  const updateStickFromScroll = useCallback(() => {
+    const el = viewportRef.current;
+    if (!el) return;
+    const gap = el.scrollHeight - el.scrollTop - el.clientHeight;
+    stickToBottomRef.current = gap <= NEAR_BOTTOM_PX;
+    if (stickToBottomRef.current) setJumpVisible(false);
+  }, []);
+
+  const stopRecordingCleanup = useCallback(async () => {
+    if (recordTickRef.current) {
+      clearInterval(recordTickRef.current);
+      recordTickRef.current = null;
+    }
+    const rec = mediaRecorderRef.current;
+    if (rec && rec.state !== "inactive") {
+      await new Promise<void>((resolve) => {
+        rec.addEventListener("stop", () => resolve(), { once: true });
+        try {
+          rec.stop();
+        } catch {
+          resolve();
+        }
+      });
+    }
+    mediaRecorderRef.current = null;
+    mediaChunksRef.current = [];
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    streamRef.current = null;
+    setRecording(false);
+    setRecordingMs(0);
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!activeId || loadingMessages) return;
+    const el = viewportRef.current;
+    if (!el || rows.length === 0) {
+      prevTailIdRef.current = null;
+      return;
+    }
+    const tailId = rows[rows.length - 1]!.id;
+    if (stickToBottomRef.current) {
+      el.scrollTop = el.scrollHeight;
+      setJumpVisible(false);
+      prevTailIdRef.current = tailId;
+    } else {
+      if (prevTailIdRef.current !== null && tailId !== prevTailIdRef.current) {
+        setJumpVisible(true);
+      }
+      prevTailIdRef.current = tailId;
+    }
   }, [rows, activeId, loadingMessages]);
 
   const mq = mentionQueryAtCaret(draft, caret);
@@ -198,6 +311,82 @@ export function MessagesView() {
       cancelled = true;
     };
   }, [draft, caret, mq?.query, mq?.start, sdk]);
+
+  useEffect(() => {
+    return () => {
+      void stopRecordingCleanup();
+    };
+  }, [stopRecordingCleanup]);
+
+  async function toggleMic() {
+    if (!activeId || sending) return;
+    if (recording) {
+      const rec = mediaRecorderRef.current;
+      if (!rec || rec.state === "inactive") {
+        await stopRecordingCleanup();
+        return;
+      }
+      await new Promise<void>((resolve) => {
+        rec.addEventListener("stop", () => resolve(), { once: true });
+        rec.stop();
+      });
+      if (recordTickRef.current) {
+        clearInterval(recordTickRef.current);
+        recordTickRef.current = null;
+      }
+      const mime = recordMimeRef.current || "audio/webm";
+      const blob = new Blob(mediaChunksRef.current, { type: mime });
+      mediaRecorderRef.current = null;
+      mediaChunksRef.current = [];
+      streamRef.current?.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+      setRecording(false);
+      setRecordingMs(0);
+      if (blob.size < 256) {
+        toast.message("Recording too short");
+        return;
+      }
+      const ext = mime.includes("webm") ? "webm" : "m4a";
+      const file = new File([blob], `voice.${ext}`, { type: mime });
+      setSending(true);
+      setError(null);
+      try {
+        await sdk.sendVoiceMessage({ conversationId: activeId, file });
+        stickToBottomRef.current = true;
+        await loadMessages(activeId, { silent: true });
+        await refreshSummaries();
+        toast.success("Voice sent");
+      } catch (e) {
+        setError(userFacingApiError(e));
+      } finally {
+        setSending(false);
+      }
+      return;
+    }
+
+    const mime = pickRecorderMime();
+    recordMimeRef.current = mime;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+      mediaChunksRef.current = [];
+      const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+      mediaRecorderRef.current = rec;
+      rec.ondataavailable = (ev) => {
+        if (ev.data.size > 0) mediaChunksRef.current.push(ev.data);
+      };
+      rec.start(250);
+      recordStartedAtRef.current = Date.now();
+      setRecordingMs(0);
+      setRecording(true);
+      recordTickRef.current = setInterval(() => {
+        setRecordingMs(Date.now() - recordStartedAtRef.current);
+      }, 200);
+    } catch {
+      toast.error("Microphone access denied or unavailable");
+      await stopRecordingCleanup();
+    }
+  }
 
   const activeTitle = useMemo(() => {
     if (!activeId) return "Messages";
@@ -240,6 +429,7 @@ export function MessagesView() {
     setRows((prev) => [...prev, optimistic]);
     setDraft("");
     setMentionHits(null);
+    stickToBottomRef.current = true;
     setSending(true);
     setError(null);
     try {
@@ -277,23 +467,6 @@ export function MessagesView() {
     });
   }
 
-  async function onVoiceFile(file: File | null) {
-    if (!file || !activeId) return;
-    setSending(true);
-    setError(null);
-    try {
-      await sdk.sendVoiceMessage({ conversationId: activeId, file });
-      await loadMessages(activeId, { silent: true });
-      await refreshSummaries();
-      toast.success("Voice message sent");
-    } catch (e) {
-      setError(userFacingApiError(e));
-    } finally {
-      setSending(false);
-      if (voiceInputRef.current) voiceInputRef.current.value = "";
-    }
-  }
-
   function onConversationStarted(conversationId: string) {
     void refreshSummaries();
     setActiveId(conversationId);
@@ -318,7 +491,6 @@ export function MessagesView() {
   }
 
   async function removeMessage(messageId: string) {
-    if (!window.confirm("Delete this message?")) return;
     setSending(true);
     setError(null);
     try {
@@ -331,6 +503,12 @@ export function MessagesView() {
     }
   }
 
+  function onJumpLatest() {
+    stickToBottomRef.current = true;
+    scrollToBottom("smooth");
+    setJumpVisible(false);
+  }
+
   return (
     <div className="flex h-[calc(100vh-0px)] min-h-0">
       <div className="flex w-80 shrink-0 flex-col border-r border-border bg-card">
@@ -340,7 +518,7 @@ export function MessagesView() {
             type="button"
             variant="outline"
             size="sm"
-            className="border-border shadow-none"
+            className="border-border shadow-none transition-colors duration-150"
             onClick={() => setNewOpen(true)}
           >
             New message
@@ -365,141 +543,220 @@ export function MessagesView() {
           ) : null}
         </div>
 
-        <ScrollArea className="flex-1">
-          <div className="space-y-2 p-4">
+        <div className="relative min-h-0 flex-1">
+          <div
+            ref={viewportRef}
+            onScroll={updateStickFromScroll}
+            className="h-full overflow-y-auto overflow-x-hidden scroll-smooth px-4 py-3"
+          >
             {!activeId ? (
-              <div className="flex min-h-48 flex-col items-center justify-center gap-2 px-4 py-12 text-center">
+              <div className="flex min-h-48 flex-col items-center justify-center gap-2 py-12 text-center">
                 <p className="text-sm text-muted-foreground">No active signals.</p>
                 <p className="max-w-sm text-xs text-muted-foreground">
                   Start a conversation from the inbox, open New message, or use the AI tab.
                 </p>
               </div>
             ) : loadingMessages ? (
-              <>
-                <Skeleton className="h-14 animate-none rounded-md border border-border bg-muted/30 shadow-none" />
-                <Skeleton className="h-14 animate-none rounded-md border border-border bg-muted/30 shadow-none" />
-              </>
+              <div className="space-y-2">
+                <Skeleton className="h-14 w-full max-w-md border border-border bg-muted/30 shadow-none" />
+                <Skeleton className="h-14 w-full max-w-md border border-border bg-muted/30 shadow-none" />
+              </div>
             ) : rows.length === 0 ? (
               <div className="flex min-h-32 items-center justify-center text-sm text-muted-foreground">
                 No messages in this thread yet.
               </div>
             ) : (
-              rows.map((m) => {
-                const isAi = m.senderType === "ai";
-                const mine = !isAi && m.senderUserId === myId;
-                const deleted = !!m.deletedAt;
-                const canEdit = mine && !isAi && !deleted && m.messageType === "text" && !m.pending;
-                return (
-                  <div key={m.id} className={cn("flex", mine ? "justify-end" : "justify-start")}>
-                    <Card
-                      className={cn(
-                        "max-w-[min(100%,28rem)] border-border px-3 py-2 shadow-none",
-                        mine ? "bg-muted" : "bg-card",
-                        isAi && "border-dashed bg-muted/40",
-                        m.optimistic && "opacity-80",
-                        deleted && "opacity-60",
-                      )}
-                    >
-                      {isAi ? (
-                        <div className="mb-1 flex items-center gap-2">
-                          <span className="rounded border border-border bg-background px-1.5 py-0.5 font-mono text-[9px] font-medium uppercase tracking-wide text-muted-foreground">
-                            AI
-                          </span>
-                          {m.aiAgentName ? (
-                            <span className="font-mono text-[10px] text-muted-foreground">{m.aiAgentName}</span>
-                          ) : null}
-                        </div>
-                      ) : null}
-                      {m.messageType === "voice" && m.audioUrl && !deleted ? (
-                        <audio className="mb-2 w-full max-w-xs" controls src={m.audioUrl} preload="metadata" />
-                      ) : null}
-                      {editingId === m.id ? (
-                        <div className="space-y-2">
-                          <Textarea
-                            value={editDraft}
-                            onChange={(e) => setEditDraft(e.target.value)}
-                            className="min-h-16 resize-none border border-border bg-background text-sm shadow-none"
-                          />
-                          <div className="flex gap-2">
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="outline"
-                              className="border-border shadow-none"
-                              onClick={() => void saveEdit(m.id)}
-                              disabled={sending || !editDraft.trim()}
-                            >
-                              Save
-                            </Button>
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="ghost"
-                              className="shadow-none"
-                              onClick={() => setEditingId(null)}
-                            >
-                              Cancel
-                            </Button>
-                          </div>
-                        </div>
-                      ) : (
-                        <p className="whitespace-pre-wrap text-sm text-foreground">{m.text}</p>
-                      )}
-                      <div className="mt-1 flex flex-wrap items-center justify-end gap-2">
-                        {m.editedAt ? (
-                          <span className="text-[10px] text-muted-foreground">edited</span>
-                        ) : null}
-                        {m.pending ? (
-                          <span className="text-[10px] text-muted-foreground">Sending…</span>
-                        ) : null}
-                        {canEdit && editingId !== m.id ? (
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className="h-6 px-1.5 text-[10px] text-muted-foreground shadow-none"
-                            onClick={() => {
-                              setEditingId(m.id);
-                              setEditDraft(m.text);
-                            }}
-                          >
-                            Edit
-                          </Button>
-                        ) : null}
-                        {mine && !m.pending && !deleted ? (
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className="h-6 px-1.5 text-[10px] text-muted-foreground shadow-none"
-                            onClick={() => void removeMessage(m.id)}
-                          >
-                            Delete
-                          </Button>
-                        ) : null}
-                        <span className="font-mono text-[10px] text-muted-foreground">
-                          {formatBubbleTime(m.createdAt)}
-                        </span>
-                      </div>
-                    </Card>
-                  </div>
-                );
-              })
-            )}
-            <div ref={bottomRef} />
-          </div>
-        </ScrollArea>
+              <div className="space-y-2 pb-2">
+                {rows.map((m) => {
+                  const isAi = m.senderType === "ai";
+                  const mine = !isAi && m.senderUserId === myId;
+                  const deleted = !!m.deletedAt;
+                  const isVoice = m.messageType === "voice" && !deleted;
+                  const canEdit =
+                    mine && !isAi && !deleted && m.messageType === "text" && !m.pending && !m.optimistic;
 
-        {error ? <p className="border-t border-border px-4 py-2 text-sm text-destructive">{error}</p> : null}
+                  return (
+                    <div
+                      key={m.id}
+                      className={cn("flex transition-opacity duration-150", mine ? "justify-end" : "justify-start")}
+                    >
+                      <div
+                        className={cn(
+                          "group relative max-w-[min(100%,28rem)] transition-[opacity,transform] duration-150",
+                          m.optimistic && "opacity-70",
+                        )}
+                      >
+                        {canEdit && editingId !== m.id ? (
+                          <div
+                            className={cn(
+                              "absolute right-1.5 top-1.5 z-[1] flex items-center gap-0.5 transition-opacity duration-150",
+                              "opacity-100 md:opacity-0 md:group-hover:opacity-100",
+                            )}
+                          >
+                            <DropdownMenu>
+                              <DropdownMenuTrigger
+                                type="button"
+                                className={cn(
+                                  buttonVariants({ variant: "ghost", size: "icon" }),
+                                  "h-7 w-7 border border-border bg-background/90 text-foreground shadow-none backdrop-blur-sm transition-colors duration-150 hover:bg-muted",
+                                )}
+                                aria-label="Message actions"
+                              >
+                                <MoreHorizontal className="size-4" />
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" className="min-w-36 border-border shadow-none ring-1 ring-border">
+                                <DropdownMenuItem
+                                  onClick={() => {
+                                    setEditingId(m.id);
+                                    setEditDraft(m.text === DELETED_LABEL ? "" : m.text);
+                                    requestAnimationFrame(() => editTaRef.current?.focus());
+                                  }}
+                                >
+                                  <Pencil className="size-3.5" />
+                                  Edit
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => void removeMessage(m.id)}
+                                  className="text-foreground"
+                                >
+                                  <Trash2 className="size-3.5" />
+                                  Delete
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
+                        ) : null}
+
+                        <Card
+                          className={cn(
+                            "border px-3 py-2 shadow-none transition-[border-color,background-color] duration-150",
+                            isAi
+                              ? "border-dashed border-foreground/25 bg-muted/30"
+                              : "border-border bg-card",
+                            mine && !isAi && "bg-muted",
+                            deleted && "border-dashed border-foreground/20 bg-muted/20",
+                          )}
+                        >
+                          {isAi ? (
+                            <div className="mb-1.5 flex items-center gap-2">
+                              <span className="rounded border border-foreground/20 bg-background px-1.5 py-0.5 font-mono text-[9px] font-medium uppercase tracking-wide text-muted-foreground">
+                                AI
+                              </span>
+                              {m.aiAgentName ? (
+                                <span className="font-mono text-[10px] text-muted-foreground">{m.aiAgentName}</span>
+                              ) : null}
+                            </div>
+                          ) : null}
+
+                          {isVoice && m.audioUrl ? (
+                            <audio
+                              className="mb-2 w-full max-w-[min(100%,18rem)] grayscale"
+                              controls
+                              src={m.audioUrl}
+                              preload="metadata"
+                            />
+                          ) : null}
+
+                          {editingId === m.id ? (
+                            <Textarea
+                              ref={editTaRef}
+                              value={editDraft}
+                              onChange={(e) => setEditDraft(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter" && !e.shiftKey) {
+                                  e.preventDefault();
+                                  void saveEdit(m.id);
+                                }
+                                if (e.key === "Escape") {
+                                  e.preventDefault();
+                                  setEditingId(null);
+                                }
+                              }}
+                              className="min-h-20 resize-none border border-border bg-background text-sm shadow-none transition-colors duration-150"
+                            />
+                          ) : (
+                            <p
+                              className={cn(
+                                "whitespace-pre-wrap text-sm transition-colors duration-150",
+                                deleted ? "italic text-muted-foreground" : "text-foreground",
+                              )}
+                            >
+                              {m.text}
+                            </p>
+                          )}
+
+                          <div className="mt-1 flex flex-wrap items-center justify-end gap-2">
+                            {m.editedAt && !deleted ? (
+                              <span className="text-[10px] text-muted-foreground">edited</span>
+                            ) : null}
+                            {m.pending ? (
+                              <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
+                                <Loader2 className="size-3 animate-spin" />
+                                Sending…
+                              </span>
+                            ) : null}
+                            <span className="font-mono text-[10px] text-muted-foreground">
+                              {formatBubbleTime(m.createdAt)}
+                            </span>
+                          </div>
+                        </Card>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            <div ref={bottomAnchorRef} className="h-px w-full shrink-0" aria-hidden />
+          </div>
+
+          {activeId && jumpVisible ? (
+            <div className="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="pointer-events-auto gap-1.5 rounded-full border-foreground/20 bg-background/95 px-3 text-foreground shadow-sm backdrop-blur-sm transition-opacity duration-150 hover:bg-muted"
+                onClick={onJumpLatest}
+              >
+                <ArrowDown className="size-3.5" />
+                New messages
+              </Button>
+            </div>
+          ) : null}
+        </div>
+
+        {error ? (
+          <p className="border-t border-border px-4 py-2 text-sm text-muted-foreground">{error}</p>
+        ) : null}
 
         <div className="relative border-t border-border p-3">
+          {recording ? (
+            <div className="mb-2 flex items-center justify-between gap-2 rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-foreground transition-colors duration-150">
+              <span className="inline-flex items-center gap-2 font-mono">
+                <span className="inline-block size-2 rounded-full bg-foreground transition-opacity duration-300" />
+                Recording… {formatRecordingDuration(recordingMs)}
+              </span>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8 gap-1 border-border px-2 shadow-none"
+                onClick={() => void toggleMic()}
+                disabled={sending}
+              >
+                <Square className="size-3.5" />
+                Stop &amp; send
+              </Button>
+            </div>
+          ) : null}
+
           {mq && mentionHits ? (
-            <div className="absolute bottom-full left-3 right-3 z-10 mb-1 max-h-48 overflow-auto rounded-md border border-border bg-card text-xs shadow-sm">
+            <div className="absolute bottom-full left-3 right-3 z-10 mb-1 max-h-48 overflow-auto rounded-md border border-border bg-card text-xs shadow-sm transition-opacity duration-150">
               {mentionHits.agents.map((a) => (
                 <button
                   key={`a-${a.id}`}
                   type="button"
-                  className="flex w-full items-center justify-between gap-2 border-b border-border px-2 py-1.5 text-left hover:bg-muted"
+                  className="flex w-full items-center justify-between gap-2 border-b border-border px-2 py-1.5 text-left transition-colors duration-150 hover:bg-muted"
                   onClick={() => insertMention(a.shortHandle)}
                 >
                   <span className="font-medium text-foreground">{a.name}</span>
@@ -510,7 +767,7 @@ export function MessagesView() {
                 <button
                   key={`u-${u.userId}`}
                   type="button"
-                  className="flex w-full items-center justify-between gap-2 border-b border-border px-2 py-1.5 text-left hover:bg-muted last:border-b-0"
+                  className="flex w-full items-center justify-between gap-2 border-b border-border px-2 py-1.5 text-left transition-colors duration-150 hover:bg-muted last:border-b-0"
                   onClick={() => insertMention(u.handle)}
                 >
                   <span className="font-medium text-foreground">{u.displayName}</span>
@@ -523,55 +780,59 @@ export function MessagesView() {
             </div>
           ) : null}
 
-          <Textarea
-            ref={taRef}
-            value={draft}
-            onChange={(e) => {
-              setDraft(e.target.value);
-              setCaret(e.target.selectionStart ?? e.target.value.length);
-            }}
-            onSelect={(e) => {
-              const t = e.currentTarget;
-              setCaret(t.selectionStart ?? t.value.length);
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                void send();
+          <div className="flex items-end gap-2">
+            <Textarea
+              ref={taRef}
+              value={draft}
+              onChange={(e) => {
+                setDraft(e.target.value);
+                setCaret(e.target.selectionStart ?? e.target.value.length);
+              }}
+              onSelect={(e) => {
+                const t = e.currentTarget;
+                setCaret(t.selectionStart ?? t.value.length);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  void send();
+                }
+              }}
+              placeholder={
+                activeId
+                  ? "Write a message… @oracle @analyst @writer — mention people with @handle. Enter to send · Shift+Enter newline"
+                  : "Select a conversation"
               }
-            }}
-            placeholder={
-              activeId ? "Message… (@oracle, @analyst, @writer for AI). Enter to send, Shift+Enter newline." : "Select a conversation"
-            }
-            disabled={!activeId || sending}
-            className="min-h-18 resize-none border border-border bg-background text-sm shadow-none"
-          />
-          <input
-            ref={voiceInputRef}
-            type="file"
-            accept="audio/*"
-            className="hidden"
-            onChange={(e) => void onVoiceFile(e.target.files?.[0] ?? null)}
-          />
-          <div className="mt-2 flex flex-wrap gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              className="border-border shadow-none"
-              disabled={sending || !activeId || !draft.trim()}
-              onClick={() => void send()}
-            >
-              {sending ? "Sending…" : "Send"}
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              className="border-border shadow-none"
-              disabled={sending || !activeId}
-              onClick={() => voiceInputRef.current?.click()}
-            >
-              Voice
-            </Button>
+              disabled={!activeId || sending || recording}
+              className="min-h-18 flex-1 resize-none border border-border bg-background text-sm shadow-none transition-colors duration-150"
+            />
+            <div className="flex shrink-0 flex-col gap-1.5 pb-0.5">
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                className={cn(
+                  "size-10 border-border shadow-none transition-colors duration-150",
+                  recording && "border-foreground/40 bg-muted",
+                )}
+                disabled={!activeId || sending}
+                onClick={() => void toggleMic()}
+                aria-label={recording ? "Stop recording" : "Record voice"}
+              >
+                {recording ? <Square className="size-4" /> : <Mic className="size-4" />}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                className="size-10 border-border shadow-none transition-colors duration-150"
+                disabled={sending || !activeId || !draft.trim() || recording}
+                onClick={() => void send()}
+                aria-label="Send"
+              >
+                {sending ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
+              </Button>
+            </div>
           </div>
         </div>
       </div>
