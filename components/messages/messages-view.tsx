@@ -589,7 +589,7 @@ export function MessagesView() {
                         {canEdit && editingId !== m.id ? (
                           <div
                             className={cn(
-                              "absolute right-1.5 top-1.5 z-[1] flex items-center gap-0.5 transition-opacity duration-150",
+                              "absolute right-1.5 top-1.5 z-1 flex items-center gap-0.5 transition-opacity duration-150",
                               "opacity-100 md:opacity-0 md:group-hover:opacity-100",
                             )}
                           >
