@@ -139,6 +139,8 @@ export const identities = pgTable(
     handle: text("handle").notNull(),
     displayName: text("display_name").notNull(),
     bio: text("bio"),
+    /** HTTPS URL or small `data:image/*;base64,…` avatar for this identity. */
+    avatarUrl: text("avatar_url"),
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
       .notNull()
       .defaultNow(),
@@ -207,6 +209,8 @@ export const posts = pgTable(
     communityId: uuid("community_id").references(() => communities.id, { onDelete: "set null" }),
     postKind: text("post_kind").notNull().default("text"),
     body: text("body").notNull(),
+    editedAt: timestamp("edited_at", { withTimezone: true, mode: "date" }),
+    deletedAt: timestamp("deleted_at", { withTimezone: true, mode: "date" }),
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
       .notNull()
       .defaultNow(),

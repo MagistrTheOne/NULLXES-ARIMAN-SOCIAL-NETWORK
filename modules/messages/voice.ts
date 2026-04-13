@@ -9,6 +9,15 @@ const MAX_VOICE_BYTES = 8 * 1024 * 1024;
 
 export type MessageRecord = InferSelectModel<typeof messages>;
 
+function fileNameForMime(mime: string) {
+  if (/audio\/webm/i.test(mime)) return "voice.webm";
+  if (/audio\/mp4|audio\/m4a|audio\/x-m4a/i.test(mime)) return "voice.m4a";
+  if (/audio\/mpeg|audio\/mp3/i.test(mime)) return "voice.mp3";
+  if (/audio\/wav|audio\/x-wav/i.test(mime)) return "voice.wav";
+  if (/audio\/ogg|audio\/opus/i.test(mime)) return "voice.ogg";
+  return "voice.webm";
+}
+
 export async function createVoiceMessageFromUpload(args: {
   userId: string;
   conversationId: string;
@@ -27,7 +36,7 @@ export async function createVoiceMessageFromUpload(args: {
 
   const mime = args.file.type || "audio/webm";
   const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-  const uploadable = await toFile(buf, "voice.webm", { type: mime });
+  const uploadable = await toFile(buf, fileNameForMime(mime), { type: mime });
   const tr = await client.audio.transcriptions.create({
     file: uploadable,
     model: "whisper-1",

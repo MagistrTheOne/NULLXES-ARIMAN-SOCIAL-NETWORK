@@ -1,5 +1,5 @@
 import OpenAI from "openai";
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { identities, posts } from "@/lib/db/schema";
 import { z } from "@/lib/security/validation";
@@ -24,7 +24,7 @@ export async function analyzePostForUser(_userId: string, postId: string): Promi
     })
     .from(posts)
     .innerJoin(identities, eq(posts.authorIdentityId, identities.id))
-    .where(eq(posts.id, postId))
+    .where(and(eq(posts.id, postId), isNull(posts.deletedAt)))
     .limit(1);
 
   const p = row[0];

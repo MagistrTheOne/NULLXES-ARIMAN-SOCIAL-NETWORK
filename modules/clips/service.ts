@@ -1,4 +1,4 @@
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { clips, identities, posts } from "@/lib/db/schema";
 import { generateClipCaptionAndSummary } from "@/modules/ai/clip-caption";
@@ -24,7 +24,7 @@ export async function listClipsForIdentity(userId: string, identityId: string, l
     .from(clips)
     .innerJoin(posts, eq(clips.postId, posts.id))
     .innerJoin(identities, eq(posts.authorIdentityId, identities.id))
-    .where(eq(posts.authorIdentityId, identityId))
+    .where(and(eq(posts.authorIdentityId, identityId), isNull(posts.deletedAt)))
     .orderBy(desc(clips.createdAt))
     .limit(limit);
 

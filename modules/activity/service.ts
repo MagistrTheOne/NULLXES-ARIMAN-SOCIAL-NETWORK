@@ -1,4 +1,4 @@
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { isUndefinedRelationError } from "@/lib/db/pg-relation-error";
 import { postComments, posts } from "@/lib/db/schema";
@@ -53,7 +53,9 @@ export async function listActivityForIdentity(userId: string, identityId: string
       })
       .from(postComments)
       .innerJoin(posts, eq(postComments.postId, posts.id))
-      .where(eq(postComments.authorIdentityId, identityId))
+      .where(
+        and(eq(postComments.authorIdentityId, identityId), isNull(posts.deletedAt)),
+      )
       .orderBy(desc(postComments.createdAt))
       .limit(limit);
   } catch (e) {

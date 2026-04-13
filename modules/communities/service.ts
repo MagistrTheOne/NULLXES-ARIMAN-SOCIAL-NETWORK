@@ -1,4 +1,4 @@
-import { and, count, desc, eq } from "drizzle-orm";
+import { and, count, desc, eq, isNull } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { communities, communityMembers, identities, posts } from "@/lib/db/schema";
 import { enrichPosts } from "@/modules/post-interactions/service";
@@ -59,6 +59,7 @@ export async function listPostsForCommunity(
       authorIdentityId: posts.authorIdentityId,
       postKind: posts.postKind,
       body: posts.body,
+      editedAt: posts.editedAt,
       createdAt: posts.createdAt,
       communityId: posts.communityId,
       authorHandle: identities.handle,
@@ -66,7 +67,7 @@ export async function listPostsForCommunity(
     })
     .from(posts)
     .innerJoin(identities, eq(posts.authorIdentityId, identities.id))
-    .where(eq(posts.communityId, communityId))
+    .where(and(eq(posts.communityId, communityId), isNull(posts.deletedAt)))
     .orderBy(desc(posts.createdAt))
     .limit(limit);
 

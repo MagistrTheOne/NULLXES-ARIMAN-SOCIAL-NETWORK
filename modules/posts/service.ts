@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { identities, posts } from "@/lib/db/schema";
 import { assertIdentityOwned } from "@/modules/identities/access";
@@ -38,13 +38,14 @@ export async function listPostsForIdentity(userId: string, identityId: string, l
       communityId: posts.communityId,
       postKind: posts.postKind,
       body: posts.body,
+      editedAt: posts.editedAt,
       createdAt: posts.createdAt,
       authorHandle: identities.handle,
       authorDisplayName: identities.displayName,
     })
     .from(posts)
     .innerJoin(identities, eq(posts.authorIdentityId, identities.id))
-    .where(eq(posts.authorIdentityId, identityId))
+    .where(and(eq(posts.authorIdentityId, identityId), isNull(posts.deletedAt)))
     .orderBy(desc(posts.createdAt))
     .limit(limit);
 
@@ -63,4 +64,40 @@ export async function listPostsForIdentity(userId: string, identityId: string, l
       savedByViewer: a.savedByViewer,
     };
   });
+}
+
+async function loadPostOwnershipRow(postId: string) {
+  const [row] = await db
+    .select({
+      postId: posts.id,
+      authorUserId: identities.userId,
+      deletedAt: posts.deletedAt,
+    })
+    .from(posts)
+    .innerJoin(identities, eq(posts.authorIdentityId, identities.id))
+    .where(eq(posts.id, postId))
+    .limit(1);
+  return row ?? null;
+}
+
+export async function updatePostBodyForOwner(userId: string, postId: string, body: string) {
+  const row = await loadPostOwnershipRow(postId);
+  if (!row || row.authorUserId !== userId) throw new Error("FORBIDDEN_POST");
+  if (row.deletedAt) throw new Error("POST_DELETED");
+  const trimmed = body.trim();
+  if (!trimmed) throw new Error("EMPTY_BODY");
+  await db
+    .update(posts)
+    .set({ body: trimmed, editedAt: new Date() })
+    .where(eq(posts.id, postId));
+}
+
+export async function softDeletePostForOwner(userId: string, postId: string) {
+  const row = await loadPostOwnershipRow(postId);
+  if (!row || row.authorUserId !== userId) throw new Error("FORBIDDEN_POST");
+  if (row.deletedAt) throw new Error("POST_DELETED");
+  await db
+    .update(posts)
+    .set({ deletedAt: new Date(), body: "" })
+    .where(eq(posts.id, postId));
 }

@@ -14,7 +14,18 @@ import {
   type GetMessagesParams,
 } from "./messaging.js";
 import { listMentionCandidates, type ListMentionCandidatesParams } from "./mention-candidates.js";
-import { createPost, getFeed, getMe, getPosts, patchMe, type GetFeedParams } from "./posts.js";
+import {
+  createPost,
+  deletePost,
+  getFeed,
+  getMe,
+  getPosts,
+  getProfileStats,
+  patchMe,
+  patchPost,
+  type GetFeedParams,
+  type GetProfileStatsParams,
+} from "./posts.js";
 import { getCommunity, joinCommunity, type GetCommunityParams } from "./communities.js";
 import {
   createComment,
@@ -55,6 +66,8 @@ import type {
   MeResponse,
   PatchMeBody,
   PatchMeResponse,
+  PatchPostBody,
+  ProfileStatsResponse,
   SearchUsersResponse,
   SendMessageBody,
   CommunityDetailResponse,
@@ -82,6 +95,10 @@ export function createArimanSdk(config: ArimanSdkConfig = {}) {
     getFeed: (params: GetFeedParams): Promise<GetPostsResponse> => getFeed(c, params),
     getPosts: (params: GetFeedParams): Promise<GetPostsResponse> => getPosts(c, params),
     patchMe: (body: PatchMeBody): Promise<PatchMeResponse> => patchMe(c, body),
+    getProfileStats: (params: GetProfileStatsParams): Promise<ProfileStatsResponse> =>
+      getProfileStats(c, params),
+    patchPost: (postId: string, body: PatchPostBody): Promise<{ ok: boolean }> => patchPost(c, postId, body),
+    deletePost: (postId: string): Promise<{ ok: boolean }> => deletePost(c, postId),
     createPost: (body: CreatePostBody): Promise<CreatePostResponse> => createPost(c, body),
     getCommunity: (slug: string, params?: GetCommunityParams): Promise<CommunityDetailResponse> =>
       getCommunity(c, slug, params),

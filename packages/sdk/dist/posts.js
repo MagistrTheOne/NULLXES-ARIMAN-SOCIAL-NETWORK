@@ -26,4 +26,22 @@ export async function createPost(config, body) {
         body: JSON.stringify(body),
     });
 }
+export async function getProfileStats(config, params) {
+    const sp = new URLSearchParams({ identityId: params.identityId });
+    return apiJson(config, `/api/users/me/stats?${sp.toString()}`, {
+        method: "GET",
+    });
+}
+export async function patchPost(config, postId, body) {
+    return apiJson(config, `/api/posts/${encodeURIComponent(postId)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+    });
+}
+export async function deletePost(config, postId) {
+    return apiJson(config, `/api/posts/${encodeURIComponent(postId)}`, {
+        method: "DELETE",
+    });
+}
 //# sourceMappingURL=posts.js.map

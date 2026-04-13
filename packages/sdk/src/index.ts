@@ -24,8 +24,17 @@ export type { ListMentionCandidatesParams } from "./mention-candidates.js";
 export { searchUsers } from "./users-search.js";
 export type { SearchUsersParams } from "./users-search.js";
 
-export { getMe, getFeed, getPosts, patchMe, createPost } from "./posts.js";
-export type { GetFeedParams } from "./posts.js";
+export {
+  getMe,
+  getFeed,
+  getPosts,
+  getProfileStats,
+  patchMe,
+  patchPost,
+  deletePost,
+  createPost,
+} from "./posts.js";
+export type { GetFeedParams, GetProfileStatsParams } from "./posts.js";
 
 export { getCommunity, joinCommunity, type GetCommunityParams } from "./communities.js";
 
@@ -92,6 +101,8 @@ export type {
   MeResponse,
   PatchMeBody,
   PatchMeResponse,
+  PatchPostBody,
+  ProfileStatsResponse,
   SearchUsersResponse,
   UserSearchRow,
   MessageRow,

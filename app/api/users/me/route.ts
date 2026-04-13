@@ -67,6 +67,7 @@ export async function PATCH(request: Request) {
     const row = await updateProfileIdentity(userId, parsed.data.identityId, {
       displayName: parsed.data.displayName,
       bio: parsed.data.bio,
+      avatarUrl: parsed.data.avatarUrl,
     });
     const identities = await ensurePrimaryIdentity(userId);
     return withApiSecurityHeaders(NextResponse.json({ userId, identities, identity: row }));

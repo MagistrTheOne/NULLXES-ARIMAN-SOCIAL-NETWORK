@@ -4,7 +4,7 @@ export { sendMessage, sendAiChat, sendVoiceMessage, getMessages, listConversatio
 export { listAiAgents, ensureAiConversation } from "./ai.js";
 export { listMentionCandidates } from "./mention-candidates.js";
 export { searchUsers } from "./users-search.js";
-export { getMe, getFeed, getPosts, patchMe, createPost } from "./posts.js";
+export { getMe, getFeed, getPosts, getProfileStats, patchMe, patchPost, deletePost, createPost, } from "./posts.js";
 export { getCommunity, joinCommunity } from "./communities.js";
 export { listPostComments, createComment, toggleEcho, toggleSave, getActivity, } from "./post-social.js";
 export { listConversations, getConversation } from "./conversations.js";

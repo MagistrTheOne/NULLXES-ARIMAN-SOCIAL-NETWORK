@@ -4,7 +4,7 @@ import { createClip, getClips, recordClipView, uploadClipVideo } from "./clips.j
 import { getConversation, listConversations } from "./conversations.js";
 import { deleteMessage, getMessages, listConversationSummaries, markConversationRead, patchMessage, sendAiChat, sendMessage, sendVoiceMessage, } from "./messaging.js";
 import { listMentionCandidates } from "./mention-candidates.js";
-import { createPost, getFeed, getMe, getPosts, patchMe } from "./posts.js";
+import { createPost, deletePost, getFeed, getMe, getPosts, getProfileStats, patchMe, patchPost, } from "./posts.js";
 import { getCommunity, joinCommunity } from "./communities.js";
 import { createComment, getActivity, listPostComments, toggleEcho, toggleSave, } from "./post-social.js";
 import { searchUsers } from "./users-search.js";
@@ -24,6 +24,9 @@ export function createArimanSdk(config = {}) {
         getFeed: (params) => getFeed(c, params),
         getPosts: (params) => getPosts(c, params),
         patchMe: (body) => patchMe(c, body),
+        getProfileStats: (params) => getProfileStats(c, params),
+        patchPost: (postId, body) => patchPost(c, postId, body),
+        deletePost: (postId) => deletePost(c, postId),
         createPost: (body) => createPost(c, body),
         getCommunity: (slug, params) => getCommunity(c, slug, params),
         listPostComments: (postId, limit) => listPostComments(c, postId, limit),

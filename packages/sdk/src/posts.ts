@@ -7,6 +7,8 @@ import type {
   MeResponse,
   PatchMeBody,
   PatchMeResponse,
+  PatchPostBody,
+  ProfileStatsResponse,
 } from "./types.js";
 
 export async function getMe(config: ArimanSdkConfig | undefined): Promise<MeResponse> {
@@ -51,5 +53,40 @@ export async function createPost(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
+  });
+}
+
+export type GetProfileStatsParams = {
+  identityId: string;
+};
+
+export async function getProfileStats(
+  config: ArimanSdkConfig | undefined,
+  params: GetProfileStatsParams,
+): Promise<ProfileStatsResponse> {
+  const sp = new URLSearchParams({ identityId: params.identityId });
+  return apiJson<ProfileStatsResponse>(config, `/api/users/me/stats?${sp.toString()}`, {
+    method: "GET",
+  });
+}
+
+export async function patchPost(
+  config: ArimanSdkConfig | undefined,
+  postId: string,
+  body: PatchPostBody,
+): Promise<{ ok: boolean }> {
+  return apiJson<{ ok: boolean }>(config, `/api/posts/${encodeURIComponent(postId)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+export async function deletePost(
+  config: ArimanSdkConfig | undefined,
+  postId: string,
+): Promise<{ ok: boolean }> {
+  return apiJson<{ ok: boolean }>(config, `/api/posts/${encodeURIComponent(postId)}`, {
+    method: "DELETE",
   });
 }

@@ -75,6 +75,7 @@ export type Identity = {
   handle: string;
   displayName: string;
   bio?: string | null;
+  avatarUrl?: string | null;
   createdAt: string;
 };
 
@@ -89,6 +90,7 @@ export type PostRow = {
   postKind: string;
   body: string;
   createdAt: string;
+  editedAt?: string | null;
   communityId?: string | null;
   authorHandle?: string;
   authorDisplayName?: string;
@@ -179,6 +181,19 @@ export type PatchMeBody = {
   identityId: string;
   displayName?: string;
   bio?: string | null;
+  avatarUrl?: string | null;
+};
+
+export type ProfileStatsResponse = {
+  postCount: number;
+  clipCount: number;
+  threadCount: number;
+  communityCount: number;
+  connectionCount: number;
+};
+
+export type PatchPostBody = {
+  body: string;
 };
 
 export type PatchMeResponse = MeResponse & {

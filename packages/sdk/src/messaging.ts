@@ -100,7 +100,13 @@ export async function sendVoiceMessage(
 ): Promise<CreateMessageResponse> {
   const fd = new FormData();
   fd.set("conversationId", args.conversationId);
-  fd.set("file", args.file, "voice.webm");
+  const inferredName =
+    args.file instanceof File && args.file.name
+      ? args.file.name
+      : args.file.type.includes("mp4")
+        ? "voice.m4a"
+        : "voice.webm";
+  fd.set("file", args.file, inferredName);
   return apiJson<CreateMessageResponse>(config, "/api/messages/voice", {
     method: "POST",
     body: fd,
