@@ -134,11 +134,42 @@ export const identities = pgTable(
       .references(() => users.id, { onDelete: "cascade" }),
     handle: text("handle").notNull(),
     displayName: text("display_name").notNull(),
+    bio: text("bio"),
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
       .notNull()
       .defaultNow(),
   },
   (t) => [uniqueIndex("identities_handle_uidx").on(t.handle), index("identities_user_id_idx").on(t.userId)],
+);
+
+export const communities = pgTable(
+  "communities",
+  {
+    id: uuid("id")
+      .default(sql`pg_catalog.gen_random_uuid()`)
+      .primaryKey(),
+    slug: text("slug").notNull(),
+    title: text("title").notNull(),
+    description: text("description"),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [uniqueIndex("communities_slug_uidx").on(t.slug)],
+);
+
+export const communityMembers = pgTable(
+  "community_members",
+  {
+    communityId: uuid("community_id")
+      .notNull()
+      .references(() => communities.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    joinedAt: timestamp("joined_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.communityId, t.userId] }), index("community_members_user_idx").on(t.userId)],
 );
 
 export const devices = pgTable(
@@ -169,13 +200,63 @@ export const posts = pgTable(
     authorIdentityId: uuid("author_identity_id")
       .notNull()
       .references(() => identities.id, { onDelete: "cascade" }),
+    communityId: uuid("community_id").references(() => communities.id, { onDelete: "set null" }),
     postKind: text("post_kind").notNull().default("text"),
     body: text("body").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
       .notNull()
       .defaultNow(),
   },
-  (t) => [index("posts_author_created_idx").on(t.authorIdentityId, t.createdAt)],
+  (t) => [
+    index("posts_author_created_idx").on(t.authorIdentityId, t.createdAt),
+    index("posts_community_created_idx").on(t.communityId, t.createdAt),
+  ],
+);
+
+export const postEchoes = pgTable(
+  "post_echoes",
+  {
+    postId: uuid("post_id")
+      .notNull()
+      .references(() => posts.id, { onDelete: "cascade" }),
+    identityId: uuid("identity_id")
+      .notNull()
+      .references(() => identities.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.postId, t.identityId] }), index("post_echoes_post_idx").on(t.postId)],
+);
+
+export const postSaves = pgTable(
+  "post_saves",
+  {
+    postId: uuid("post_id")
+      .notNull()
+      .references(() => posts.id, { onDelete: "cascade" }),
+    identityId: uuid("identity_id")
+      .notNull()
+      .references(() => identities.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.postId, t.identityId] }), index("post_saves_post_idx").on(t.postId)],
+);
+
+export const postComments = pgTable(
+  "post_comments",
+  {
+    id: uuid("id")
+      .default(sql`pg_catalog.gen_random_uuid()`)
+      .primaryKey(),
+    postId: uuid("post_id")
+      .notNull()
+      .references(() => posts.id, { onDelete: "cascade" }),
+    authorIdentityId: uuid("author_identity_id")
+      .notNull()
+      .references(() => identities.id, { onDelete: "cascade" }),
+    body: text("body").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [index("post_comments_post_created_idx").on(t.postId, t.createdAt)],
 );
 
 export const clips = pgTable(
@@ -240,6 +321,7 @@ export const conversationMembers = pgTable(
     joinedAt: timestamp("joined_at", { withTimezone: true, mode: "date" })
       .notNull()
       .defaultNow(),
+    lastReadAt: timestamp("last_read_at", { withTimezone: true, mode: "date" }),
   },
   (t) => [primaryKey({ columns: [t.conversationId, t.userId] })],
 );
@@ -292,6 +374,22 @@ export const identitiesRelations = relations(identities, ({ one, many }) => ({
   posts: many(posts),
 }));
 
+export const communitiesRelations = relations(communities, ({ many }) => ({
+  members: many(communityMembers),
+  posts: many(posts),
+}));
+
+export const communityMembersRelations = relations(communityMembers, ({ one }) => ({
+  community: one(communities, {
+    fields: [communityMembers.communityId],
+    references: [communities.id],
+  }),
+  user: one(users, {
+    fields: [communityMembers.userId],
+    references: [users.id],
+  }),
+}));
+
 export const devicesRelations = relations(devices, ({ one }) => ({
   user: one(users, { fields: [devices.userId], references: [users.id] }),
 }));
@@ -301,7 +399,19 @@ export const postsRelations = relations(posts, ({ one }) => ({
     fields: [posts.authorIdentityId],
     references: [identities.id],
   }),
+  community: one(communities, {
+    fields: [posts.communityId],
+    references: [communities.id],
+  }),
   clip: one(clips, { fields: [posts.id], references: [clips.postId] }),
+}));
+
+export const postCommentsRelations = relations(postComments, ({ one }) => ({
+  post: one(posts, { fields: [postComments.postId], references: [posts.id] }),
+  authorIdentity: one(identities, {
+    fields: [postComments.authorIdentityId],
+    references: [identities.id],
+  }),
 }));
 
 export const clipsRelations = relations(clips, ({ one, many }) => ({

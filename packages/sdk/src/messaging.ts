@@ -3,6 +3,7 @@ import type {
   ArimanSdkConfig,
   CreateMessageResponse,
   GetMessagesResponse,
+  ListConversationSummariesResponse,
   SendMessageBody,
 } from "./types.js";
 
@@ -31,4 +32,23 @@ export async function getMessages(
   return apiJson<GetMessagesResponse>(config, `/api/messages?${sp.toString()}`, {
     method: "GET",
   });
+}
+
+export async function listConversationSummaries(
+  config: ArimanSdkConfig | undefined,
+): Promise<ListConversationSummariesResponse> {
+  return apiJson<ListConversationSummariesResponse>(config, "/api/messages?mode=conversations", {
+    method: "GET",
+  });
+}
+
+export async function markConversationRead(
+  config: ArimanSdkConfig | undefined,
+  conversationId: string,
+): Promise<{ ok: boolean }> {
+  return apiJson<{ ok: boolean }>(
+    config,
+    `/api/conversations/${encodeURIComponent(conversationId)}/read`,
+    { method: "POST" },
+  );
 }

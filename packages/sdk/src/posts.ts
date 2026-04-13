@@ -5,10 +5,23 @@ import type {
   CreatePostResponse,
   GetPostsResponse,
   MeResponse,
+  PatchMeBody,
+  PatchMeResponse,
 } from "./types.js";
 
 export async function getMe(config: ArimanSdkConfig | undefined): Promise<MeResponse> {
   return apiJson<MeResponse>(config, "/api/users/me", { method: "GET" });
+}
+
+export async function patchMe(
+  config: ArimanSdkConfig | undefined,
+  body: PatchMeBody,
+): Promise<PatchMeResponse> {
+  return apiJson<PatchMeResponse>(config, "/api/users/me", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
 }
 
 export type GetFeedParams = {
@@ -26,6 +39,9 @@ export async function getFeed(
     method: "GET",
   });
 }
+
+/** Alias for {@link getFeed} — list posts for an identity you own. */
+export const getPosts = getFeed;
 
 export async function createPost(
   config: ArimanSdkConfig | undefined,

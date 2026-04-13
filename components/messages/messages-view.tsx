@@ -1,340 +1,278 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { createArimanSdk } from "@nullxes/ariman-sdk";
-import {
-  decryptMessage,
-  encryptMessage,
-  privateKeyFromBase64,
-  publicKeyToBase64,
-  generateKeyPair,
-} from "@/lib/crypto/client";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createArimanSdk, type ConversationSummaryRow, type MessageRow } from "@nullxes/ariman-sdk";
+import { format } from "date-fns";
 import { userFacingApiError } from "@/lib/http-error-message";
+import { useCurrentUser } from "@/lib/hooks/use-current-user";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
+import { ConversationList } from "@/components/messages/conversation-list";
+import { NewMessageDialog } from "@/components/messages/new-message-dialog";
+import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 
-const PRIV = "ariman_x25519_private_b64";
-const PUB = "ariman_x25519_public_b64";
+type ChatRow = {
+  id: string;
+  senderUserId: string;
+  text: string;
+  createdAt: string;
+  pending?: boolean;
+  optimistic?: boolean;
+};
 
-const fieldClass =
-  "border border-border bg-background font-mono text-xs text-foreground shadow-none";
+function mapServerMessage(m: MessageRow): ChatRow {
+  const text =
+    m.body?.trim() ||
+    (m.encryptionVersion > 0 && m.ciphertext ? "[Encrypted message]" : "—");
+  return {
+    id: m.id,
+    senderUserId: m.senderUserId,
+    text,
+    createdAt: m.createdAt,
+  };
+}
 
-function peerPubKeyStorageKey(peerUserId: string) {
-  return `ariman_peer_x25519_pub_${peerUserId}`;
+function formatBubbleTime(iso: string) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return format(d, "HH:mm");
 }
 
 export function MessagesView() {
   const sdk = useMemo(() => createArimanSdk(), []);
+  const { user: currentUser } = useCurrentUser();
+  const myId = currentUser?.id ?? "";
 
-  const [conversations, setConversations] = useState<{ conversationId: string; joinedAt: string }[]>(
-    [],
-  );
+  const [summaries, setSummaries] = useState<ConversationSummaryRow[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [peerUserId, setPeerUserId] = useState<string | null>(null);
-  const [peerPubInput, setPeerPubInput] = useState("");
-  const [rows, setRows] = useState<
-    { id: string; plaintext?: string; raw?: string; encryptionVersion: number | null }[]
-  >([]);
+  const [rows, setRows] = useState<ChatRow[]>([]);
   const [draft, setDraft] = useState("");
-  const [newPeer, setNewPeer] = useState("");
-  const [newPeerPub, setNewPeerPub] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [loadingConversations, setLoadingConversations] = useState(true);
+  const [loadingSummaries, setLoadingSummaries] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(false);
-  const [loadingPeer, setLoadingPeer] = useState(false);
   const [sending, setSending] = useState(false);
+  const [newOpen, setNewOpen] = useState(false);
 
-  const ensureKeys = useCallback(() => {
-    if (typeof window === "undefined") return;
-    let priv = sessionStorage.getItem(PRIV);
-    if (!priv) {
-      const kp = generateKeyPair();
-      priv = btoa(String.fromCharCode(...kp.privateKey));
-      sessionStorage.setItem(PRIV, priv);
-      sessionStorage.setItem(PUB, publicKeyToBase64(kp.publicKey));
-    }
-  }, []);
+  const bottomRef = useRef<HTMLDivElement | null>(null);
 
-  useEffect(() => {
-    ensureKeys();
-    let cancelled = false;
-    setLoadingConversations(true);
+  const refreshSummaries = useCallback(async () => {
     setError(null);
-    void (async () => {
-      try {
-        const d = await sdk.listConversations();
-        if (!cancelled) setConversations(d.conversations ?? []);
-      } catch (e) {
-        if (!cancelled) setError(userFacingApiError(e));
-      } finally {
-        if (!cancelled) setLoadingConversations(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [ensureKeys, sdk]);
+    try {
+      const d = await sdk.listConversationSummaries();
+      setSummaries(d.conversations ?? []);
+    } catch (e) {
+      setError(userFacingApiError(e));
+    }
+  }, [sdk]);
 
   useEffect(() => {
-    if (!activeId) {
-      setPeerUserId(null);
-      setPeerPubInput("");
-      return;
-    }
     let cancelled = false;
-    setLoadingPeer(true);
+    setLoadingSummaries(true);
     void (async () => {
       try {
-        const d = await sdk.getConversation(activeId);
-        if (cancelled) return;
-        setPeerUserId(d.peerUserId ?? null);
-        if (d.peerUserId) {
-          const stored = sessionStorage.getItem(peerPubKeyStorageKey(d.peerUserId));
-          setPeerPubInput(stored ?? "");
-        } else {
-          setPeerPubInput("");
-        }
-      } catch (e) {
-        if (!cancelled) setError(userFacingApiError(e));
+        await refreshSummaries();
       } finally {
-        if (!cancelled) setLoadingPeer(false);
+        if (!cancelled) setLoadingSummaries(false);
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [activeId, sdk]);
+  }, [refreshSummaries]);
 
   const loadMessages = useCallback(
-    async (conversationId: string) => {
-      setLoadingMessages(true);
-      setError(null);
+    async (conversationId: string, opts?: { silent?: boolean }) => {
+      const silent = opts?.silent;
+      if (!silent) {
+        setLoadingMessages(true);
+        setError(null);
+      }
       try {
         const d = await sdk.getMessages({ conversationId });
-        const privB64 = sessionStorage.getItem(PRIV);
-        const priv = privB64 ? privateKeyFromBase64(privB64) : null;
         const list = d.messages ?? [];
-        const mapped = list.map((m) => {
-          if (m.encryptionVersion === 1 && m.ciphertext && priv) {
-            try {
-              return {
-                id: m.id,
-                plaintext: decryptMessage(m.ciphertext, priv),
-                encryptionVersion: m.encryptionVersion,
-              };
-            } catch {
-              return { id: m.id, raw: "[decrypt error]", encryptionVersion: m.encryptionVersion };
-            }
-          }
-          if (m.body) {
-            return { id: m.id, plaintext: m.body, encryptionVersion: m.encryptionVersion ?? 0 };
-          }
-          return { id: m.id, raw: "[encrypted]", encryptionVersion: m.encryptionVersion };
-        });
-        setRows(mapped.reverse());
+        const chronological = list.slice().reverse();
+        setRows(chronological.map(mapServerMessage));
       } catch (e) {
-        setError(userFacingApiError(e));
+        if (!silent) setError(userFacingApiError(e));
       } finally {
-        setLoadingMessages(false);
+        if (!silent) setLoadingMessages(false);
       }
     },
     [sdk],
   );
 
   useEffect(() => {
-    if (activeId) void loadMessages(activeId);
-    else setRows([]);
+    if (!activeId) {
+      setRows([]);
+      return;
+    }
+    void loadMessages(activeId);
   }, [activeId, loadMessages]);
 
-  function savePeerPub() {
-    if (!peerUserId) return;
-    sessionStorage.setItem(peerPubKeyStorageKey(peerUserId), peerPubInput.trim());
-  }
+  useEffect(() => {
+    if (!activeId) return;
+    void sdk.markConversationRead(activeId).catch(() => {});
+    void refreshSummaries();
+  }, [activeId, sdk, refreshSummaries]);
+
+  useEffect(() => {
+    if (!activeId) return;
+    const id = window.setInterval(() => {
+      void loadMessages(activeId, { silent: true });
+    }, 2500);
+    return () => window.clearInterval(id);
+  }, [activeId, loadMessages]);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [rows, activeId, loadingMessages]);
+
+  const activeTitle = useMemo(() => {
+    if (!activeId) return "Messages";
+    const s = summaries.find((x) => x.conversationId === activeId);
+    return s?.peerDisplayName ?? "Conversation";
+  }, [activeId, summaries]);
 
   async function send() {
-    setError(null);
-    const privB64 = sessionStorage.getItem(PRIV);
-    if (!privB64) {
-      setError("Request failed");
-      return;
-    }
-    const priv = privateKeyFromBase64(privB64);
-
-    if (activeId) {
-      if (!peerUserId) {
-        setError("Request failed");
-        return;
-      }
-      const peerPub =
-        peerPubInput.trim() || sessionStorage.getItem(peerPubKeyStorageKey(peerUserId)) || "";
-      if (!peerPub) {
-        setError("Request failed");
-        return;
-      }
-      setSending(true);
-      try {
-        const { ciphertext, sender_public_key } = encryptMessage(draft, peerPub.trim(), priv);
-        await sdk.sendMessage({
-          conversationId: activeId,
-          ciphertext,
-          encryption_version: 1,
-          sender_public_key,
-        });
-        setDraft("");
-        await loadMessages(activeId);
-      } catch (e) {
-        setError(userFacingApiError(e));
-      } finally {
-        setSending(false);
-      }
-      return;
-    }
-
-    if (!newPeer.trim() || !newPeerPub.trim()) {
-      setError("Request failed");
-      return;
-    }
+    if (!activeId || !draft.trim() || !myId) return;
+    const text = draft.trim();
+    const tempId = `local-${crypto.randomUUID()}`;
+    const optimistic: ChatRow = {
+      id: tempId,
+      senderUserId: myId,
+      text,
+      createdAt: new Date().toISOString(),
+      pending: true,
+      optimistic: true,
+    };
+    setRows((prev) => [...prev, optimistic]);
+    setDraft("");
     setSending(true);
+    setError(null);
     try {
-      const { ciphertext, sender_public_key } = encryptMessage(draft, newPeerPub.trim(), priv);
-      const out = await sdk.sendMessage({
-        peerUserId: newPeer.trim(),
-        ciphertext,
-        encryption_version: 1,
-        sender_public_key,
-      });
-      setDraft("");
-      setActiveId(out.conversationId);
-      setNewPeer("");
-      setNewPeerPub("");
-      const convData = await sdk.listConversations();
-      setConversations(convData.conversations ?? []);
-      await loadMessages(out.conversationId);
+      await sdk.sendMessage({ conversationId: activeId, body: text });
+      await loadMessages(activeId, { silent: true });
+      await refreshSummaries();
     } catch (e) {
+      setRows((prev) => prev.filter((r) => r.id !== tempId));
+      setDraft(text);
       setError(userFacingApiError(e));
     } finally {
       setSending(false);
     }
   }
 
+  function onConversationStarted(conversationId: string) {
+    void refreshSummaries();
+    setActiveId(conversationId);
+    toast.success("Conversation opened");
+  }
+
   return (
     <div className="flex h-[calc(100vh-0px)] min-h-0">
-      <div className="flex w-72 flex-col border-r border-border bg-card">
-        <div className="border-b border-border p-3">
-          <Label className="font-mono text-xs tracking-wide text-muted-foreground uppercase">
-            Conversations
-          </Label>
+      <div className="flex w-80 shrink-0 flex-col border-r border-border bg-card">
+        <div className="flex items-center justify-between gap-2 border-b border-border p-3">
+          <Label className="font-mono text-xs tracking-wide text-muted-foreground uppercase">Inbox</Label>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="border-border shadow-none"
+            onClick={() => setNewOpen(true)}
+          >
+            New message
+          </Button>
         </div>
-        <ScrollArea className="flex-1">
-          <div className="flex flex-col gap-1 p-2">
-            {loadingConversations ? (
-              <>
-                <Skeleton className="h-8 animate-none bg-muted/50" />
-                <Skeleton className="h-8 animate-none bg-muted/50" />
-                <Skeleton className="h-8 animate-none bg-muted/50" />
-              </>
-            ) : (
-              conversations.map((c) => (
-                <Button
-                  key={c.conversationId}
-                  variant="outline"
-                  size="sm"
-                  className={`justify-start border-border font-mono text-xs shadow-none ${
-                    activeId === c.conversationId ? "bg-muted text-foreground" : "bg-transparent"
-                  }`}
-                  onClick={() => setActiveId(c.conversationId)}
-                >
-                  {c.conversationId.slice(0, 8)}…
-                </Button>
-              ))
-            )}
-          </div>
-        </ScrollArea>
+        <ConversationList
+          items={summaries}
+          activeId={activeId}
+          loading={loadingSummaries}
+          onSelect={(id) => setActiveId(id)}
+        />
       </div>
-      <div className="flex min-w-0 flex-1 flex-col">
-        <div className="border-b border-border p-3">
-          {activeId ? (
-            <div className="space-y-2">
-              <Label className="font-mono text-xs tracking-wide text-muted-foreground uppercase">
-                Thread
-              </Label>
-              <p className="font-mono text-xs text-muted-foreground">{activeId}</p>
-              {loadingPeer ? (
-                <Skeleton className="h-9 animate-none bg-muted/50" />
-              ) : peerUserId ? (
-                <div className="flex gap-2">
-                  <Input
-                    placeholder="Peer X25519 public key (base64)"
-                    value={peerPubInput}
-                    onChange={(e) => setPeerPubInput(e.target.value)}
-                    className={fieldClass}
-                  />
-                  <Button type="button" variant="outline" size="sm" className="shadow-none" onClick={savePeerPub}>
-                    Save
-                  </Button>
-                </div>
-              ) : null}
-            </div>
-          ) : (
-            <div className="space-y-2">
-              <Label className="text-xs tracking-wide text-muted-foreground uppercase">New DM</Label>
-              <p className="text-xs text-muted-foreground">Peer user id and peer public key</p>
-              <Input
-                placeholder="Peer user UUID"
-                value={newPeer}
-                onChange={(e) => setNewPeer(e.target.value)}
-                className={fieldClass}
-              />
-              <Input
-                placeholder="Peer X25519 public key (base64)"
-                value={newPeerPub}
-                onChange={(e) => setNewPeerPub(e.target.value)}
-                className={fieldClass}
-              />
-            </div>
-          )}
+
+      <div className="flex min-w-0 flex-1 flex-col bg-background">
+        <div className="border-b border-border px-4 py-3">
+          <h2 className="truncate text-sm font-medium text-foreground">{activeTitle}</h2>
+          {!activeId ? (
+            <p className="mt-0.5 text-xs text-muted-foreground">Select a conversation or start a new message.</p>
+          ) : null}
         </div>
-        <ScrollArea className="flex-1 p-4">
-          <div className="space-y-2">
-            {loadingMessages ? (
+
+        <ScrollArea className="flex-1">
+          <div className="space-y-2 p-4">
+            {!activeId ? (
+              <div className="flex min-h-48 flex-col items-center justify-center gap-2 px-4 py-12 text-center">
+                <p className="text-sm text-muted-foreground">No active signals.</p>
+                <p className="max-w-sm text-xs text-muted-foreground">Start a conversation from the inbox, or open New message.</p>
+              </div>
+            ) : loadingMessages ? (
               <>
-                <Skeleton className="h-14 animate-none bg-muted/50" />
-                <Skeleton className="h-14 animate-none bg-muted/50" />
+                <Skeleton className="h-14 animate-none rounded-md border border-border bg-muted/30 shadow-none" />
+                <Skeleton className="h-14 animate-none rounded-md border border-border bg-muted/30 shadow-none" />
               </>
+            ) : rows.length === 0 ? (
+              <div className="flex min-h-32 items-center justify-center text-sm text-muted-foreground">
+                No messages in this thread yet.
+              </div>
             ) : (
-              rows.map((m) => (
-                <div
-                  key={m.id}
-                  className="rounded border border-border bg-background px-3 py-2 text-sm text-foreground shadow-none"
-                >
-                  {m.plaintext ?? m.raw}
-                </div>
-              ))
+              rows.map((m) => {
+                const mine = m.senderUserId === myId;
+                return (
+                  <div key={m.id} className={cn("flex", mine ? "justify-end" : "justify-start")}>
+                    <Card
+                      className={cn(
+                        "max-w-[min(100%,28rem)] border-border px-3 py-2 shadow-none",
+                        mine ? "bg-muted" : "bg-card",
+                        m.optimistic && "opacity-80",
+                      )}
+                    >
+                      <p className="whitespace-pre-wrap text-sm text-foreground">{m.text}</p>
+                      <div className="mt-1 flex items-center justify-end gap-2">
+                        {m.pending ? (
+                          <span className="text-[10px] text-muted-foreground">Sending…</span>
+                        ) : null}
+                        <span className="font-mono text-[10px] text-muted-foreground">
+                          {formatBubbleTime(m.createdAt)}
+                        </span>
+                      </div>
+                    </Card>
+                  </div>
+                );
+              })
             )}
+            <div ref={bottomRef} />
           </div>
         </ScrollArea>
-        {error ? <p className="px-4 text-sm text-destructive">{error}</p> : null}
+
+        {error ? <p className="border-t border-border px-4 py-2 text-sm text-destructive">{error}</p> : null}
+
         <div className="border-t border-border p-3">
           <Textarea
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
-            placeholder="Message…"
-            className={`min-h-[72px] ${fieldClass}`}
+            placeholder={activeId ? "Message…" : "Select a conversation"}
+            disabled={!activeId || sending}
+            className="min-h-18 resize-none border border-border bg-background text-sm shadow-none"
           />
           <Button
+            type="button"
             variant="outline"
             className="mt-2 border-border shadow-none"
-            disabled={sending}
+            disabled={sending || !activeId || !draft.trim()}
             onClick={() => void send()}
           >
-            {sending ? "Sending…" : "Send encrypted"}
+            {sending ? "Sending…" : "Send"}
           </Button>
         </div>
       </div>
+
+      <NewMessageDialog open={newOpen} onOpenChange={setNewOpen} onConversationStarted={onConversationStarted} />
     </div>
   );
 }

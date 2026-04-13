@@ -81,11 +81,18 @@ export async function POST(request: Request) {
   }
 
   try {
-    const row = await createPost(userId, parsed.data.identityId, parsed.data.body);
+    const row = await createPost(userId, parsed.data.identityId, parsed.data.body, {
+      communityId: parsed.data.communityId,
+    });
     return withApiSecurityHeaders(NextResponse.json({ post: row }, { status: 201 }));
   } catch (e) {
     if (e instanceof Error && e.message === "FORBIDDEN_IDENTITY") {
       return withApiSecurityHeaders(NextResponse.json({ error: "Forbidden" }, { status: 403 }));
+    }
+    if (e instanceof Error && e.message === "NOT_COMMUNITY_MEMBER") {
+      return withApiSecurityHeaders(
+        NextResponse.json({ error: "Join the community before posting here." }, { status: 403 }),
+      );
     }
     throw e;
   }

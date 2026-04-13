@@ -4,7 +4,13 @@ import { parseBody } from "@/lib/security/validation";
 import { rateLimitSync } from "@/lib/security/rate-limit";
 import { withApiSecurityHeaders } from "@/lib/security/headers";
 import { createMessageBodySchema, listMessagesQuerySchema } from "@/modules/messages/schemas";
-import { createMessage, listMessages } from "@/modules/messages/service";
+import {
+  createEncryptedMessage,
+  createPlaintextMessage,
+  listConversationSummariesForUser,
+  listMessages,
+} from "@/modules/messages/service";
+import type { CreateEncryptedMessageInput } from "@/modules/messages/service";
 
 export const runtime = "nodejs";
 
@@ -31,10 +37,16 @@ export async function GET(request: Request) {
   }
 
   const { searchParams } = new URL(request.url);
-  const q = listMessagesQuerySchema.safeParse({
-    conversationId: searchParams.get("conversationId"),
-    limit: searchParams.get("limit") ?? undefined,
-  });
+  const mode = searchParams.get("mode");
+
+  const q =
+    mode === "conversations"
+      ? listMessagesQuerySchema.safeParse({ mode: "conversations" as const })
+      : listMessagesQuerySchema.safeParse({
+          conversationId: searchParams.get("conversationId"),
+          limit: searchParams.get("limit") ?? undefined,
+        });
+
   if (!q.success) {
     return withApiSecurityHeaders(
       NextResponse.json({ error: "Invalid query", issues: q.error.issues }, { status: 400 }),
@@ -42,6 +54,15 @@ export async function GET(request: Request) {
   }
 
   try {
+    if ("mode" in q.data && q.data.mode === "conversations") {
+      const rows = await listConversationSummariesForUser(userId);
+      return withApiSecurityHeaders(NextResponse.json({ conversations: rows }));
+    }
+    if (!("conversationId" in q.data)) {
+      return withApiSecurityHeaders(
+        NextResponse.json({ error: "Invalid query", issues: [] }, { status: 400 }),
+      );
+    }
     const rows = await listMessages(userId, q.data.conversationId, q.data.limit);
     return withApiSecurityHeaders(NextResponse.json({ messages: rows }));
   } catch (e) {
@@ -80,8 +101,13 @@ export async function POST(request: Request) {
     );
   }
 
+  const data = parsed.data;
+  const isPlaintext = "body" in data && !("ciphertext" in data);
+
   try {
-    const out = await createMessage(userId, parsed.data);
+    const out = isPlaintext
+      ? await createPlaintextMessage(userId, data)
+      : await createEncryptedMessage(userId, data as CreateEncryptedMessageInput);
     return withApiSecurityHeaders(NextResponse.json(out, { status: 201 }));
   } catch (e) {
     if (e instanceof Error && e.message === "NOT_MEMBER") {

@@ -1,0 +1,1 @@
+{"version":3,"file":"users-search.d.ts","sourceRoot":"","sources":["../src/users-search.ts"],"names":[],"mappings":"AACA,OAAO,KAAK,EAAE,eAAe,EAAE,mBAAmB,EAAE,MAAM,YAAY,CAAC;AAEvE,MAAM,MAAM,iBAAiB,GAAG;IAC9B,MAAM,EAAE,MAAM,CAAC;IACf,KAAK,CAAC,EAAE,MAAM,CAAC;CAChB,CAAC;AAEF,wBAAsB,WAAW,CAC/B,MAAM,EAAE,eAAe,GAAG,SAAS,EACnC,MAAM,EAAE,iBAAiB,GACxB,OAAO,CAAC,mBAAmB,CAAC,CAI9B"}

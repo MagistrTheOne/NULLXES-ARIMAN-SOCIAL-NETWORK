@@ -19,9 +19,24 @@ export const createMessageBodySchema = z.union([
       ...encryptedFields,
     })
     .strict(),
+  z
+    .object({
+      conversationId: z.uuid(),
+      body: z.string().min(1).max(16000),
+    })
+    .strict(),
+  z
+    .object({
+      peerUserId: z.uuid(),
+      body: z.string().min(1).max(16000),
+    })
+    .strict(),
 ]);
 
-export const listMessagesQuerySchema = z.object({
-  conversationId: z.uuid(),
-  limit: z.coerce.number().int().min(1).max(100).optional().default(50),
-});
+export const listMessagesQuerySchema = z.union([
+  z.object({ mode: z.literal("conversations") }),
+  z.object({
+    conversationId: z.uuid(),
+    limit: z.coerce.number().int().min(1).max(100).optional().default(50),
+  }),
+]);

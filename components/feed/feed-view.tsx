@@ -2,7 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createArimanSdk } from "@nullxes/ariman-sdk";
+import type { PostRow } from "@nullxes/ariman-sdk";
 import { userFacingApiError } from "@/lib/http-error-message";
+import { toast } from "sonner";
+import { FeedPost } from "@/components/feed/post";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -10,14 +13,13 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 
 type Identity = { id: string; handle: string; displayName: string };
-type Post = { id: string; body: string; createdAt: string };
 
 export function FeedView() {
   const sdk = useMemo(() => createArimanSdk(), []);
 
   const [identities, setIdentities] = useState<Identity[]>([]);
   const [activeIdentity, setActiveIdentity] = useState<string | null>(null);
-  const [posts, setPosts] = useState<Post[]>([]);
+  const [posts, setPosts] = useState<PostRow[]>([]);
   const [body, setBody] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loadingMe, setLoadingMe] = useState(true);
@@ -51,8 +53,8 @@ export function FeedView() {
       setLoadingPosts(true);
       setError(null);
       try {
-        const d = await sdk.getFeed({ identityId });
-        setPosts((d.posts ?? []) as Post[]);
+        const d = await sdk.getPosts({ identityId });
+        setPosts(d.posts ?? []);
       } catch (e) {
         setError(userFacingApiError(e));
       } finally {
@@ -75,6 +77,7 @@ export function FeedView() {
       await sdk.createPost({ identityId: activeIdentity, body });
       setBody("");
       await loadPosts(activeIdentity);
+      toast.success("Published");
     } catch (e) {
       setError(userFacingApiError(e));
     } finally {
@@ -121,7 +124,7 @@ export function FeedView() {
             value={body}
             onChange={(e) => setBody(e.target.value)}
             placeholder="Post body…"
-            className="min-h-[80px] border border-border bg-background text-foreground shadow-none"
+            className="min-h-20 border border-border bg-background text-foreground shadow-none"
           />
           <Button
             variant="outline"
@@ -140,18 +143,17 @@ export function FeedView() {
       <ul className="mt-2 space-y-3">
         {loadingPosts ? (
           <>
-            <Skeleton className="h-20 animate-none bg-muted/50" />
-            <Skeleton className="h-20 animate-none bg-muted/50" />
+            <Skeleton className="h-28 animate-none rounded-md border border-border bg-muted/30 shadow-none" />
+            <Skeleton className="h-28 animate-none rounded-md border border-border bg-muted/30 shadow-none" />
           </>
         ) : (
           posts.map((p) => (
             <li key={p.id}>
-              <Card className="shadow-none ring-1 ring-border">
-                <CardContent className="pt-4 text-sm text-foreground">
-                  <p className="whitespace-pre-wrap">{p.body}</p>
-                  <p className="mt-2 font-mono text-xs text-muted-foreground">{p.createdAt}</p>
-                </CardContent>
-              </Card>
+              <FeedPost
+                post={p}
+                viewerIdentityId={activeIdentity}
+                onPostUpdated={() => (activeIdentity ? void loadPosts(activeIdentity) : undefined)}
+              />
             </li>
           ))
         )}

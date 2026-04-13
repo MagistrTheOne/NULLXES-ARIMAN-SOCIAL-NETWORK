@@ -1,12 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { signOut } from "@/lib/auth-client";
+import { ShellUserMenu } from "@/components/shell/shell-user-menu";
 import { useCurrentUser } from "@/lib/hooks/use-current-user";
 
 const nav = [
@@ -20,8 +20,7 @@ const nav = [
 
 export function ShellChrome({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const router = useRouter();
-  const { user, isPending } = useCurrentUser();
+  const { user, isPending, displayName, primaryHandle } = useCurrentUser();
 
   return (
     <div className="flex min-h-screen bg-background text-foreground">
@@ -30,8 +29,15 @@ export function ShellChrome({ children }: { children: React.ReactNode }) {
           <div className="font-mono text-xs tracking-wide text-muted-foreground uppercase">
             NULLXES ARIMAN
           </div>
-          {!isPending && user?.email ? (
-            <div className="mt-1 truncate font-mono text-[10px] text-muted-foreground">{user.email}</div>
+          {!isPending && user ? (
+            <div className="mt-1 space-y-0.5">
+              <div className="truncate text-xs font-medium text-foreground">{displayName}</div>
+              {primaryHandle ? (
+                <div className="truncate font-mono text-[10px] text-muted-foreground">@{primaryHandle}</div>
+              ) : (
+                <div className="truncate font-mono text-[10px] text-muted-foreground">—</div>
+              )}
+            </div>
           ) : null}
         </div>
         <ScrollArea className="flex-1 px-2 py-3">
@@ -63,25 +69,7 @@ export function ShellChrome({ children }: { children: React.ReactNode }) {
           </nav>
         </ScrollArea>
         <Separator />
-        <div className="p-2">
-          <Button
-            variant="outline"
-            size="sm"
-            className="w-full border-border bg-transparent text-muted-foreground shadow-none hover:bg-muted"
-            onClick={() =>
-              void signOut({
-                fetchOptions: {
-                  onSuccess: () => {
-                    router.push("/login");
-                    router.refresh();
-                  },
-                },
-              })
-            }
-          >
-            Sign out
-          </Button>
-        </div>
+        <ShellUserMenu />
       </aside>
       <main className="min-h-screen flex-1 border-l border-border">{children}</main>
     </div>
