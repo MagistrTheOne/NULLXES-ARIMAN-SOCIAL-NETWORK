@@ -18,8 +18,11 @@ import {
 import { format } from "date-fns";
 import {
   ArrowDown,
+  Phone,
+  PhoneOff,
   Loader2,
   Mic,
+  MicOff,
   MoreHorizontal,
   Pencil,
   Send,
@@ -30,6 +33,7 @@ import { userFacingApiError } from "@/lib/http-error-message";
 import { useCurrentUser } from "@/lib/hooks/use-current-user";
 import { shouldRouteToAiChat } from "@/lib/ai-mention";
 import { mentionQueryAtCaret } from "@/lib/mentions";
+import { createCallSession, type CallSession } from "@/lib/realtime/signaling-client";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import {
@@ -140,6 +144,12 @@ export function MessagesView() {
   const [jumpVisible, setJumpVisible] = useState(false);
   const [recording, setRecording] = useState(false);
   const [recordingMs, setRecordingMs] = useState(0);
+  const [callState, setCallState] = useState<
+    "idle" | "joining" | "negotiating" | "connected" | "reconnecting" | "ended" | "failed"
+  >("idle");
+  const [callMuted, setCallMuted] = useState(false);
+  const [networkRttMs, setNetworkRttMs] = useState<number | null>(null);
+  const [networkDegraded, setNetworkDegraded] = useState(false);
 
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const bottomAnchorRef = useRef<HTMLDivElement | null>(null);
@@ -153,6 +163,7 @@ export function MessagesView() {
   const recordStartedAtRef = useRef(0);
   const recordTickRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const callSessionRef = useRef<CallSession | null>(null);
 
   const refreshSummaries = useCallback(async () => {
     setError(null);
@@ -224,9 +235,63 @@ export function MessagesView() {
     if (!activeId) return;
     const id = window.setInterval(() => {
       void loadMessages(activeId, { silent: true });
-    }, 2500);
+    }, 10_000);
     return () => window.clearInterval(id);
   }, [activeId, loadMessages]);
+
+  useEffect(() => {
+    if (!activeId) {
+      callSessionRef.current?.close();
+      callSessionRef.current = null;
+      setCallState("idle");
+      setCallMuted(false);
+      setNetworkRttMs(null);
+      setNetworkDegraded(false);
+      return;
+    }
+
+    callSessionRef.current?.close();
+    const session = createCallSession();
+    callSessionRef.current = session;
+    const offState = session.onState((s) => {
+      setCallState(s);
+    });
+    const offNetwork = session.onNetworkQuality((sample) => {
+      setNetworkRttMs(sample.rttMs);
+      setNetworkDegraded((sample.rttMs ?? 0) > 1500);
+    });
+
+    const refreshFromSocket = () => {
+      void loadMessages(activeId, { silent: true });
+      void refreshSummaries();
+    };
+    session.client.on("call:peer-joined", refreshFromSocket);
+    session.client.on("call:peer-left", refreshFromSocket);
+    session.client.on("call:producer-added", refreshFromSocket);
+
+    void (async () => {
+      const ack = await session.join(activeId);
+      if (!ack.ok && ack.error) {
+        setError(`Call signaling: ${ack.error}`);
+      }
+    })();
+
+    const pingId = window.setInterval(() => {
+      void session.client.socket.emit("call:ping", { callId: activeId, ts: Date.now() });
+    }, 5000);
+
+    return () => {
+      window.clearInterval(pingId);
+      session.client.off("call:peer-joined", refreshFromSocket);
+      session.client.off("call:peer-left", refreshFromSocket);
+      session.client.off("call:producer-added", refreshFromSocket);
+      offState();
+      offNetwork();
+      void session.leave(activeId);
+      session.close();
+      if (callSessionRef.current === session) callSessionRef.current = null;
+    };
+  }, [activeId, loadMessages, refreshSummaries]);
 
   useEffect(() => {
     stickToBottomRef.current = true;
@@ -388,6 +453,29 @@ export function MessagesView() {
     }
   }
 
+  async function toggleCallMute() {
+    if (!activeId) return;
+    const session = callSessionRef.current;
+    if (!session) return;
+    const nextMuted = !callMuted;
+    const ack = await session.setMuted(activeId, nextMuted);
+    if (!ack.ok) {
+      toast.error(ack.error ?? "Failed to set mute");
+      return;
+    }
+    setCallMuted(nextMuted);
+  }
+
+  async function leaveCallNow() {
+    if (!activeId) return;
+    const session = callSessionRef.current;
+    if (!session) return;
+    await session.leave(activeId);
+    session.close();
+    callSessionRef.current = null;
+    setCallState("ended");
+  }
+
   const activeTitle = useMemo(() => {
     if (!activeId) return "Messages";
     const s = summaries.find((x) => x.conversationId === activeId);
@@ -537,7 +625,40 @@ export function MessagesView() {
 
       <div className="flex min-w-0 flex-1 flex-col bg-background">
         <div className="border-b border-border px-4 py-3">
-          <h2 className="truncate text-sm font-medium text-foreground">{activeTitle}</h2>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="truncate text-sm font-medium text-foreground">{activeTitle}</h2>
+            {activeId ? (
+              <div className="flex items-center gap-2">
+                <span
+                  className={cn(
+                    "rounded border px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wide",
+                    networkDegraded ? "border-foreground/40 text-foreground" : "border-border text-muted-foreground",
+                  )}
+                >
+                  {callState}
+                  {networkRttMs != null ? ` · ${Math.round(networkRttMs)}ms` : ""}
+                </span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  className={cn("size-8 border-border shadow-none", callMuted && "bg-muted")}
+                  onClick={() => void toggleCallMute()}
+                >
+                  {callMuted ? <MicOff className="size-3.5" /> : <Phone className="size-3.5" />}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  className="size-8 border-border shadow-none"
+                  onClick={() => void leaveCallNow()}
+                >
+                  <PhoneOff className="size-3.5" />
+                </Button>
+              </div>
+            ) : null}
+          </div>
           {!activeId ? (
             <p className="mt-0.5 text-xs text-muted-foreground">Select a conversation or start a new message.</p>
           ) : null}

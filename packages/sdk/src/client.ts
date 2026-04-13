@@ -1,6 +1,7 @@
 import { ensureAiConversation, listAiAgents } from "./ai.js";
 import { analyzePost } from "./ai-post.js";
 import { createClip, getClips, recordClipView, uploadClipVideo } from "./clips.js";
+import { createCallsClient } from "./calls.js";
 import { getConversation, listConversations } from "./conversations.js";
 import {
   deleteMessage,
@@ -118,6 +119,7 @@ export function createArimanSdk(config: ArimanSdkConfig = {}) {
       conversationId: string;
       file: Blob;
     }): Promise<CreateMessageResponse> => sendVoiceMessage(c, args),
+    createCallsClient: () => createCallsClient(c),
     patchMessage: (messageId: string, body: PatchMessageBody): Promise<PatchMessageResponse> =>
       patchMessage(c, messageId, body),
     deleteMessage: (messageId: string): Promise<DeleteMessageResponse> => deleteMessage(c, messageId),

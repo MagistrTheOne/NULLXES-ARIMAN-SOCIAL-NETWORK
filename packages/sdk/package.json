@@ -11,12 +11,17 @@
       "default": "./dist/index.js"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "clean": "node --input-type=module -e \"import fs from 'node:fs'; fs.rmSync('dist',{recursive:true,force:true})\""
   },
   "engines": {
     "node": ">=20"
+  },
+  "dependencies": {
+    "socket.io-client": "^4.8.3"
   }
 }

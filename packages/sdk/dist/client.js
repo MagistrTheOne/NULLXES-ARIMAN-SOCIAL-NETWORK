@@ -1,6 +1,7 @@
 import { ensureAiConversation, listAiAgents } from "./ai.js";
 import { analyzePost } from "./ai-post.js";
 import { createClip, getClips, recordClipView, uploadClipVideo } from "./clips.js";
+import { createCallsClient } from "./calls.js";
 import { getConversation, listConversations } from "./conversations.js";
 import { deleteMessage, getMessages, listConversationSummaries, markConversationRead, patchMessage, sendAiChat, sendMessage, sendVoiceMessage, } from "./messaging.js";
 import { listMentionCandidates } from "./mention-candidates.js";
@@ -38,6 +39,7 @@ export function createArimanSdk(config = {}) {
         sendMessage: (body) => sendMessage(c, body),
         sendAiChat: (body) => sendAiChat(c, body),
         sendVoiceMessage: (args) => sendVoiceMessage(c, args),
+        createCallsClient: () => createCallsClient(c),
         patchMessage: (messageId, body) => patchMessage(c, messageId, body),
         deleteMessage: (messageId) => deleteMessage(c, messageId),
         listMentionCandidates: (params) => listMentionCandidates(c, params),

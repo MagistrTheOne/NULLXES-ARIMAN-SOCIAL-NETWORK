@@ -44,6 +44,7 @@ export declare function createArimanSdk(config?: ArimanSdkConfig): {
         conversationId: string;
         file: Blob;
     }) => Promise<CreateMessageResponse>;
+    createCallsClient: () => import("./calls.js").CallsClient;
     patchMessage: (messageId: string, body: PatchMessageBody) => Promise<PatchMessageResponse>;
     deleteMessage: (messageId: string) => Promise<DeleteMessageResponse>;
     listMentionCandidates: (params?: ListMentionCandidatesParams) => Promise<MentionCandidatesResponse>;

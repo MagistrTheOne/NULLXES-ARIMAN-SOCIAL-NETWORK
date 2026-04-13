@@ -205,6 +205,103 @@ export type ArimanSdkConfig = {
   baseUrl?: string;
 };
 
+export type SignalingAck<T = unknown> = {
+  ok: boolean;
+  error?: string;
+  issues?: unknown;
+  data?: T;
+};
+
+export type CallState =
+  | "idle"
+  | "joining"
+  | "negotiating"
+  | "connected"
+  | "reconnecting"
+  | "ended"
+  | "failed";
+
+export type CallJoinBody = {
+  callId: string;
+};
+
+export type CallMuteBody = {
+  callId: string;
+  muted: boolean;
+};
+
+export type MediaTransportDirection = "send" | "recv";
+
+export type MediaTransportCreateBody = {
+  callId: string;
+  direction: MediaTransportDirection;
+};
+
+export type MediaTransportConnectBody = {
+  callId: string;
+  transportId: string;
+  dtlsParameters: Record<string, unknown>;
+};
+
+export type MediaProducerCreateBody = {
+  callId: string;
+  transportId: string;
+  kind: "audio" | "video";
+  rtpParameters: Record<string, unknown>;
+  appData?: Record<string, unknown>;
+};
+
+export type MediaConsumerCreateBody = {
+  callId: string;
+  transportId: string;
+  producerId: string;
+  rtpCapabilities: Record<string, unknown>;
+};
+
+export type MediaConsumerResumeBody = {
+  callId: string;
+  consumerId: string;
+};
+
+export type CallProducerInfo = {
+  socketId: string;
+  userId: string;
+  producerId: string;
+  kind: string;
+};
+
+export type RtpCapabilitiesResponse = {
+  rtpCapabilities: Record<string, unknown>;
+};
+
+export type CreateTransportResponse = {
+  transport: {
+    id: string;
+    iceParameters: unknown;
+    iceCandidates: unknown;
+    dtlsParameters: unknown;
+    sctpParameters: unknown;
+  };
+};
+
+export type CreateProducerResponse = {
+  producer: {
+    id: string;
+    kind: string;
+  };
+};
+
+export type CreateConsumerResponse = {
+  consumer: {
+    id: string;
+    producerId: string;
+    kind: string;
+    rtpParameters: unknown;
+    type: string;
+    producerPaused: boolean;
+  };
+};
+
 export type ConversationSummary = {
   conversationId: string;
   joinedAt: string;
