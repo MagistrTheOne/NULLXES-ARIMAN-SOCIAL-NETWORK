@@ -6,6 +6,13 @@ import { createArimanSdk, type CommentRow, type PostRow } from "@nullxes/ariman-
 import { userFacingApiError } from "@/lib/http-error-message";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
@@ -44,6 +51,9 @@ export function FeedPost({
   const [postingComment, setPostingComment] = useState(false);
   const [echoBusy, setEchoBusy] = useState(false);
   const [saveBusy, setSaveBusy] = useState(false);
+  const [analyzeOpen, setAnalyzeOpen] = useState(false);
+  const [analyzeLoading, setAnalyzeLoading] = useState(false);
+  const [analyzeText, setAnalyzeText] = useState<string | null>(null);
 
   useEffect(() => {
     setEchoCount(post.echoCount ?? 0);
@@ -75,6 +85,24 @@ export function FeedPost({
   useEffect(() => {
     if (replyOpen) void loadComments();
   }, [replyOpen, loadComments]);
+
+  const runAnalyze = useCallback(async () => {
+    setAnalyzeLoading(true);
+    setAnalyzeText(null);
+    try {
+      const r = await sdk.analyzePost(post.id);
+      setAnalyzeText(r.explanation);
+    } catch (e) {
+      toast.error(userFacingApiError(e));
+    } finally {
+      setAnalyzeLoading(false);
+    }
+  }, [sdk, post.id]);
+
+  useEffect(() => {
+    if (!analyzeOpen) return;
+    void runAnalyze();
+  }, [analyzeOpen, runAnalyze]);
 
   async function onEcho() {
     if (!viewerIdentityId) {
@@ -178,6 +206,16 @@ export function FeedPost({
           >
             Save{saveCount > 0 ? ` · ${saveCount}` : ""}
           </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="border-border shadow-none"
+            disabled={analyzeLoading && analyzeOpen}
+            onClick={() => setAnalyzeOpen(true)}
+          >
+            Analyze
+          </Button>
         </div>
 
         {replyOpen ? (
@@ -226,6 +264,24 @@ export function FeedPost({
           </div>
         ) : null}
       </CardFooter>
+
+      <Dialog open={analyzeOpen} onOpenChange={setAnalyzeOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Analyze</DialogTitle>
+            <DialogDescription>Model explanation for this post.</DialogDescription>
+          </DialogHeader>
+          {analyzeLoading ? (
+            <Skeleton className="min-h-24 animate-none border border-border bg-muted/30 shadow-none" />
+          ) : analyzeText ? (
+            <p className="max-h-[min(60vh,24rem)] overflow-y-auto whitespace-pre-wrap text-sm text-foreground">
+              {analyzeText}
+            </p>
+          ) : (
+            <p className="text-sm text-muted-foreground">No result.</p>
+          )}
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }

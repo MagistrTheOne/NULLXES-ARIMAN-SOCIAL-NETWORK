@@ -12,6 +12,7 @@ import { useCurrentUser } from "@/lib/hooks/use-current-user";
 const nav = [
   { href: "/profile", label: "Profile" },
   { href: "/messages", label: "Messages" },
+  { href: "/ai", label: "AI" },
   { href: "/feed", label: "Feed" },
   { href: "/clips", label: "Clips" },
   { href: "/community/demo", label: "Communities" },

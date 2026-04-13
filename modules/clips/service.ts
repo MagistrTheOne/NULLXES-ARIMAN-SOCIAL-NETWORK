@@ -1,6 +1,7 @@
 import { and, desc, eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { clips, identities, posts } from "@/lib/db/schema";
+import { generateClipCaptionAndSummary } from "@/modules/ai/clip-caption";
 import { assertIdentityOwned } from "@/modules/posts/service";
 import { enrichPosts } from "@/modules/post-interactions/service";
 
@@ -60,9 +61,23 @@ export async function createClipStub(userId: string, identityId: string, body: s
   const ok = await assertIdentityOwned(userId, identityId);
   if (!ok) throw new Error("FORBIDDEN_IDENTITY");
 
+  let resolvedBody = body.trim();
+  if (!resolvedBody) {
+    const idRow = await db.query.identities.findFirst({
+      where: eq(identities.id, identityId),
+      columns: { displayName: true, handle: true },
+    });
+    if (!idRow) throw new Error("FORBIDDEN_IDENTITY");
+    const gen = await generateClipCaptionAndSummary({
+      displayName: idRow.displayName,
+      handle: idRow.handle,
+    });
+    resolvedBody = gen.body;
+  }
+
   const [post] = await db
     .insert(posts)
-    .values({ authorIdentityId: identityId, body, postKind: "clip" })
+    .values({ authorIdentityId: identityId, body: resolvedBody, postKind: "clip" })
     .returning();
 
   if (!post) throw new Error("POST_CREATE_FAILED");

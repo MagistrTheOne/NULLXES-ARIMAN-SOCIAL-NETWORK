@@ -15,7 +15,8 @@ const listQuerySchema = z.object({
 
 const createBodySchema = z.object({
   identityId: z.uuid(),
-  body: z.string().min(1).max(8000),
+  /** Empty string triggers AI-generated caption (requires OPENAI_API_KEY). */
+  body: z.string().max(8000).optional().default(""),
 });
 
 function clientIp(request: Request) {
@@ -96,6 +97,24 @@ export async function POST(request: Request) {
   } catch (e) {
     if (e instanceof Error && e.message === "FORBIDDEN_IDENTITY") {
       return withApiSecurityHeaders(NextResponse.json({ error: "Forbidden" }, { status: 403 }));
+    }
+    if (e instanceof Error && e.message === "OPENAI_API_KEY_MISSING") {
+      return withApiSecurityHeaders(
+        NextResponse.json(
+          { error: "Caption generation requires OPENAI_API_KEY or provide a non-empty caption." },
+          { status: 503 },
+        ),
+      );
+    }
+    if (e instanceof Error && e.message === "OPENAI_EMPTY_RESPONSE") {
+      return withApiSecurityHeaders(
+        NextResponse.json({ error: "Caption generation failed (empty model response)" }, { status: 502 }),
+      );
+    }
+    if (e instanceof Error && e.message === "AI_INVALID_JSON") {
+      return withApiSecurityHeaders(
+        NextResponse.json({ error: "Caption generation failed (invalid model JSON)" }, { status: 502 }),
+      );
     }
     throw e;
   }

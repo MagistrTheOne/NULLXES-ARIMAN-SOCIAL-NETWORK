@@ -31,7 +31,10 @@ export async function createClip(
   return apiJson<CreateClipResponse>(config, "/api/clips", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+    body: JSON.stringify({
+      identityId: body.identityId,
+      body: body.body ?? "",
+    }),
   });
 }
 

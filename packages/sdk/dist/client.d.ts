@@ -1,9 +1,10 @@
 import { type GetMessagesParams } from "./messaging.js";
+import { type ListMentionCandidatesParams } from "./mention-candidates.js";
 import { type GetFeedParams } from "./posts.js";
 import { type GetCommunityParams } from "./communities.js";
 import { type GetActivityParams } from "./post-social.js";
 import { type SearchUsersParams } from "./users-search.js";
-import type { ArimanSdkConfig, ConversationDetailResponse, CreateClipBody, CreateClipResponse, CreateMessageResponse, CreatePostBody, CreatePostResponse, GetClipsParams, GetClipsResponse, RecordClipViewResponse, UploadClipVideoParams, UploadClipVideoResponse, GetMessagesResponse, GetPostsResponse, ListConversationSummariesResponse, ListConversationsResponse, MeResponse, PatchMeBody, PatchMeResponse, SearchUsersResponse, SendMessageBody, CommunityDetailResponse, CreateCommentBody, GetActivityResponse, ListCommentsResponse, PostInteractionState } from "./types.js";
+import type { AiChatBody, AiChatResponse, AnalyzePostResponse, ArimanSdkConfig, DeleteMessageResponse, EnsureAiConversationBody, EnsureAiConversationResponse, ListAiAgentsResponse, MentionCandidatesResponse, PatchMessageBody, PatchMessageResponse, ConversationDetailResponse, CreateClipBody, CreateClipResponse, CreateMessageResponse, CreatePostBody, CreatePostResponse, GetClipsParams, GetClipsResponse, RecordClipViewResponse, UploadClipVideoParams, UploadClipVideoResponse, GetMessagesResponse, GetPostsResponse, ListConversationSummariesResponse, ListConversationsResponse, MeResponse, PatchMeBody, PatchMeResponse, SearchUsersResponse, SendMessageBody, CommunityDetailResponse, CreateCommentBody, GetActivityResponse, ListCommentsResponse, PostInteractionState } from "./types.js";
 /** Browser-friendly default: same-origin relative `/api/*`. */
 export declare function defaultSdkBaseUrl(): string;
 export declare function createArimanSdk(config?: ArimanSdkConfig): {
@@ -31,6 +32,16 @@ export declare function createArimanSdk(config?: ArimanSdkConfig): {
         joined: boolean;
     }>;
     sendMessage: (body: SendMessageBody) => Promise<CreateMessageResponse>;
+    sendAiChat: (body: AiChatBody) => Promise<AiChatResponse>;
+    sendVoiceMessage: (args: {
+        conversationId: string;
+        file: Blob;
+    }) => Promise<CreateMessageResponse>;
+    patchMessage: (messageId: string, body: PatchMessageBody) => Promise<PatchMessageResponse>;
+    deleteMessage: (messageId: string) => Promise<DeleteMessageResponse>;
+    listMentionCandidates: (params?: ListMentionCandidatesParams) => Promise<MentionCandidatesResponse>;
+    listAiAgents: () => Promise<ListAiAgentsResponse>;
+    ensureAiConversation: (body: EnsureAiConversationBody) => Promise<EnsureAiConversationResponse>;
     getMessages: (params: GetMessagesParams) => Promise<GetMessagesResponse>;
     listConversationSummaries: () => Promise<ListConversationSummariesResponse>;
     markConversationRead: (conversationId: string) => Promise<{
@@ -43,6 +54,7 @@ export declare function createArimanSdk(config?: ArimanSdkConfig): {
     createClip: (body: CreateClipBody) => Promise<CreateClipResponse>;
     uploadClipVideo: (params: UploadClipVideoParams) => Promise<UploadClipVideoResponse>;
     recordClipView: (clipId: string) => Promise<RecordClipViewResponse>;
+    analyzePost: (postId: string) => Promise<AnalyzePostResponse>;
 };
 export type ArimanSdk = ReturnType<typeof createArimanSdk>;
 //# sourceMappingURL=client.d.ts.map

@@ -1,6 +1,9 @@
+import { ensureAiConversation, listAiAgents } from "./ai.js";
+import { analyzePost } from "./ai-post.js";
 import { createClip, getClips, recordClipView, uploadClipVideo } from "./clips.js";
 import { getConversation, listConversations } from "./conversations.js";
-import { getMessages, listConversationSummaries, markConversationRead, sendMessage, } from "./messaging.js";
+import { deleteMessage, getMessages, listConversationSummaries, markConversationRead, patchMessage, sendAiChat, sendMessage, sendVoiceMessage, } from "./messaging.js";
+import { listMentionCandidates } from "./mention-candidates.js";
 import { createPost, getFeed, getMe, getPosts, patchMe } from "./posts.js";
 import { getCommunity, joinCommunity } from "./communities.js";
 import { createComment, getActivity, listPostComments, toggleEcho, toggleSave, } from "./post-social.js";
@@ -30,6 +33,13 @@ export function createArimanSdk(config = {}) {
         getActivity: (params) => getActivity(c, params),
         joinCommunity: (slug) => joinCommunity(c, slug),
         sendMessage: (body) => sendMessage(c, body),
+        sendAiChat: (body) => sendAiChat(c, body),
+        sendVoiceMessage: (args) => sendVoiceMessage(c, args),
+        patchMessage: (messageId, body) => patchMessage(c, messageId, body),
+        deleteMessage: (messageId) => deleteMessage(c, messageId),
+        listMentionCandidates: (params) => listMentionCandidates(c, params),
+        listAiAgents: () => listAiAgents(c),
+        ensureAiConversation: (body) => ensureAiConversation(c, body),
         getMessages: (params) => getMessages(c, params),
         listConversationSummaries: () => listConversationSummaries(c),
         markConversationRead: (conversationId) => markConversationRead(c, conversationId),
@@ -40,6 +50,7 @@ export function createArimanSdk(config = {}) {
         createClip: (body) => createClip(c, body),
         uploadClipVideo: (params) => uploadClipVideo(c, params),
         recordClipView: (clipId) => recordClipView(c, clipId),
+        analyzePost: (postId) => analyzePost(c, postId),
     };
 }
 //# sourceMappingURL=client.js.map

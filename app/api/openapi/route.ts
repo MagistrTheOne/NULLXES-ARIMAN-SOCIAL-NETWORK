@@ -50,6 +50,32 @@ const spec = {
         responses: { "201": { description: "Created" } },
       },
     },
+    "/api/ai/chat": {
+      post: {
+        summary:
+          "AI agent reply (JSON actions, memories; @oracle|@analyst|@writer); optional actionIdentityId for create_post",
+        security: [{ cookieAuth: [] }],
+        responses: {
+          "201": { description: "Created" },
+          "400": { description: "Bad request" },
+          "403": { description: "Forbidden" },
+          "502": { description: "Upstream error" },
+          "503": { description: "OPENAI_API_KEY not set" },
+        },
+      },
+    },
+    "/api/ai/analyze-post": {
+      post: {
+        summary: "Explain a post (JSON explanation)",
+        security: [{ cookieAuth: [] }],
+        responses: {
+          "200": { description: "OK" },
+          "404": { description: "Post not found" },
+          "502": { description: "Upstream error" },
+          "503": { description: "OPENAI_API_KEY not set" },
+        },
+      },
+    },
     "/api/messages": {
       get: {
         summary: "List messages in conversation",

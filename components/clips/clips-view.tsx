@@ -74,7 +74,7 @@ export function ClipsView() {
   }, [activeIdentity, loadClips]);
 
   async function createClipWithOptionalUpload() {
-    if (!activeIdentity || !caption.trim()) return;
+    if (!activeIdentity) return;
     setCreating(true);
     setError(null);
     try {
@@ -167,7 +167,7 @@ export function ClipsView() {
               variant="outline"
               size="sm"
               className="border-border shadow-none"
-              disabled={creating || !activeIdentity || !caption.trim()}
+              disabled={creating || !activeIdentity}
               onClick={() => void createClipWithOptionalUpload()}
             >
               {creating ? "Publishing…" : "Publish clip"}

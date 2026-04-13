@@ -60,7 +60,14 @@ export function ConversationList(props: {
                   onClick={() => onSelect(c.conversationId)}
                 >
                   <div className="flex items-start justify-between gap-2">
-                    <span className="truncate text-sm font-medium text-foreground">{c.peerDisplayName}</span>
+                    <span className="truncate text-sm font-medium text-foreground">
+                      {c.peerDisplayName}
+                      {c.kind === "ai" ? (
+                        <span className="ml-1.5 align-middle font-mono text-[9px] font-normal text-muted-foreground">
+                          AI
+                        </span>
+                      ) : null}
+                    </span>
                     <div className="flex shrink-0 items-center gap-1.5">
                       {c.unreadCount > 0 ? (
                         <Badge variant="outline" className="h-5 min-w-5 border-border px-1.5 text-[10px] font-medium">

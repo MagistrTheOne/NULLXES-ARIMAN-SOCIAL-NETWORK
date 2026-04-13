@@ -7,11 +7,19 @@ export {
 
 export {
   sendMessage,
+  sendAiChat,
+  sendVoiceMessage,
   getMessages,
   listConversationSummaries,
   markConversationRead,
+  patchMessage,
+  deleteMessage,
 } from "./messaging.js";
 export type { GetMessagesParams } from "./messaging.js";
+
+export { listAiAgents, ensureAiConversation } from "./ai.js";
+export { listMentionCandidates } from "./mention-candidates.js";
+export type { ListMentionCandidatesParams } from "./mention-candidates.js";
 
 export { searchUsers } from "./users-search.js";
 export type { SearchUsersParams } from "./users-search.js";
@@ -32,9 +40,25 @@ export type { GetActivityParams } from "./post-social.js";
 
 export { listConversations, getConversation } from "./conversations.js";
 
+export { analyzePost } from "./ai-post.js";
+
 export { getClips, createClip, uploadClipVideo, recordClipView } from "./clips.js";
 
 export type {
+  AiChatBody,
+  AiChatResponse,
+  AiAgentRow,
+  AnalyzePostResponse,
+  DeleteMessageResponse,
+  EnsureAiConversationBody,
+  EnsureAiConversationResponse,
+  ListAiAgentsResponse,
+  MentionAgentCandidate,
+  MentionCandidatesResponse,
+  MentionUserCandidate,
+  MessageMention,
+  PatchMessageBody,
+  PatchMessageResponse,
   ArimanSdkConfig,
   ClipRow,
   ClipWithPost,

@@ -3,6 +3,7 @@ import {
   boolean,
   index,
   integer,
+  jsonb,
   pgTable,
   primaryKey,
   text,
@@ -10,6 +11,9 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+
+/** Parsed @mentions stored on messages (user = users.id, ai = ai_agents.id). */
+export type MessageMentionRow = { type: "user" | "ai"; id: string };
 
 export const users = pgTable(
   "users",
@@ -304,6 +308,41 @@ export const clipVariants = pgTable(
   (t) => [index("clip_variants_clip_id_idx").on(t.clipId)],
 );
 
+export const aiAgents = pgTable(
+  "ai_agents",
+  {
+    id: uuid("id")
+      .default(sql`pg_catalog.gen_random_uuid()`)
+      .primaryKey(),
+    handle: text("handle").notNull(),
+    name: text("name").notNull(),
+    systemPrompt: text("system_prompt").notNull(),
+    model: text("model").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [uniqueIndex("ai_agents_handle_uidx").on(t.handle)],
+);
+
+export const aiMemories = pgTable(
+  "ai_memories",
+  {
+    id: uuid("id")
+      .default(sql`pg_catalog.gen_random_uuid()`)
+      .primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    aiAgentId: uuid("ai_agent_id")
+      .notNull()
+      .references(() => aiAgents.id, { onDelete: "cascade" }),
+    content: text("content").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [index("ai_memories_user_agent_created_idx").on(t.userId, t.aiAgentId, t.createdAt)],
+);
+
 export const conversations = pgTable("conversations", {
   id: uuid("id")
     .default(sql`pg_catalog.gen_random_uuid()`)
@@ -312,6 +351,8 @@ export const conversations = pgTable("conversations", {
   createdByUserId: uuid("created_by_user_id")
     .notNull()
     .references(() => users.id, { onDelete: "cascade" }),
+  /** Set when kind is "ai" (1:1 user ↔ agent thread). */
+  aiAgentId: uuid("ai_agent_id").references(() => aiAgents.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
     .notNull()
     .defaultNow(),
@@ -343,13 +384,23 @@ export const messages = pgTable(
     conversationId: uuid("conversation_id")
       .notNull()
       .references(() => conversations.id, { onDelete: "cascade" }),
-    senderUserId: uuid("sender_user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
+    /** Human sender; null when senderType is "ai" */
+    senderUserId: uuid("sender_user_id").references(() => users.id, { onDelete: "cascade" }),
+    senderType: text("sender_type").notNull().default("user"),
+    aiAgentId: uuid("ai_agent_id").references(() => aiAgents.id, { onDelete: "set null" }),
+    messageType: text("message_type").notNull().default("text"),
     body: text("body"),
     ciphertext: text("ciphertext"),
     senderPublicKey: text("sender_public_key"),
     encryptionVersion: integer("encryption_version").notNull().default(0),
+    transcript: text("transcript"),
+    /** MIME type for stored voice blob (e.g. audio/webm). */
+    voiceMimeType: text("voice_mime_type"),
+    /** Base64-encoded audio bytes for playback via GET /api/messages/:id/audio */
+    voiceAudioBase64: text("voice_audio_base64"),
+    mentions: jsonb("mentions").$type<MessageMentionRow[] | null>(),
+    editedAt: timestamp("edited_at", { withTimezone: true, mode: "date" }),
+    deletedAt: timestamp("deleted_at", { withTimezone: true, mode: "date" }),
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
       .notNull()
       .defaultNow(),
@@ -357,12 +408,23 @@ export const messages = pgTable(
   (t) => [index("messages_conversation_created_idx").on(t.conversationId, t.createdAt)],
 );
 
+export const aiMemoriesRelations = relations(aiMemories, ({ one }) => ({
+  user: one(users, { fields: [aiMemories.userId], references: [users.id] }),
+  aiAgent: one(aiAgents, { fields: [aiMemories.aiAgentId], references: [aiAgents.id] }),
+}));
+
+export const aiAgentsRelations = relations(aiAgents, ({ many }) => ({
+  messages: many(messages),
+  memories: many(aiMemories),
+}));
+
 export const usersRelations = relations(users, ({ many }) => ({
   sessions: many(sessions),
   accounts: many(accounts),
   passkeys: many(passkey),
   identities: many(identities),
   devices: many(devices),
+  aiMemories: many(aiMemories),
 }));
 
 export const sessionsRelations = relations(sessions, ({ one }) => ({
@@ -436,6 +498,10 @@ export const conversationsRelations = relations(conversations, ({ many, one }) =
     fields: [conversations.createdByUserId],
     references: [users.id],
   }),
+  aiAgent: one(aiAgents, {
+    fields: [conversations.aiAgentId],
+    references: [aiAgents.id],
+  }),
   members: many(conversationMembers),
   messages: many(messages),
 }));
@@ -459,5 +525,9 @@ export const messagesRelations = relations(messages, ({ one }) => ({
   sender: one(users, {
     fields: [messages.senderUserId],
     references: [users.id],
+  }),
+  aiAgent: one(aiAgents, {
+    fields: [messages.aiAgentId],
+    references: [aiAgents.id],
   }),
 }));
