@@ -1,6 +1,6 @@
 import { and, asc, count, eq, inArray } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { identities, postComments, postEchoes, postSaves, posts } from "@/lib/db/schema";
+import { clips, identities, postComments, postEchoes, postSaves, posts } from "@/lib/db/schema";
 import { isUndefinedRelationError } from "@/lib/db/pg-relation-error";
 import { assertIdentityOwned } from "@/modules/identities/access";
 
@@ -87,6 +87,25 @@ export async function enrichPosts(
   return map;
 }
 
+async function syncClipEchoCountForPost(postId: string) {
+  try {
+    const clip = await db.query.clips.findFirst({
+      where: eq(clips.postId, postId),
+      columns: { id: true },
+    });
+    if (!clip) return;
+    const [{ n }] = await db
+      .select({ n: count() })
+      .from(postEchoes)
+      .where(eq(postEchoes.postId, postId));
+    await db.update(clips).set({ echoCount: Number(n) }).where(eq(clips.postId, postId));
+  } catch (e) {
+    if (isUndefinedRelationError(e)) return;
+    // Clips table may not be migrated yet (missing echo_count, etc.)
+    console.warn("[syncClipEchoCountForPost]", e);
+  }
+}
+
 export async function assertPostExists(postId: string) {
   const row = await db.query.posts.findFirst({ where: eq(posts.id, postId) });
   return row != null;
@@ -108,6 +127,7 @@ export async function toggleEcho(userId: string, postId: string, identityId: str
   } else {
     await db.insert(postEchoes).values({ postId, identityId });
   }
+  await syncClipEchoCountForPost(postId);
   const aug = await enrichPosts([postId], identityId);
   return aug.get(postId) ?? emptyAug();
   } catch (e) {

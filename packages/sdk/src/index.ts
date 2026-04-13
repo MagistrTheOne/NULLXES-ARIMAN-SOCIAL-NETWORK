@@ -32,7 +32,7 @@ export type { GetActivityParams } from "./post-social.js";
 
 export { listConversations, getConversation } from "./conversations.js";
 
-export { getClips, createClip } from "./clips.js";
+export { getClips, createClip, uploadClipVideo, recordClipView } from "./clips.js";
 
 export type {
   ArimanSdkConfig,
@@ -48,6 +48,9 @@ export type {
   CreatePostResponse,
   GetClipsParams,
   GetClipsResponse,
+  RecordClipViewResponse,
+  UploadClipVideoParams,
+  UploadClipVideoResponse,
   GetMessagesResponse,
   GetPostsResponse,
   Identity,

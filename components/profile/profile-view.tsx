@@ -213,7 +213,12 @@ export function ProfileView() {
                 <li key={clip.id}>
                   <Card className="h-full border-border shadow-none ring-1 ring-border">
                     <CardContent className="space-y-3 p-4">
-                      <div className="aspect-video w-full border border-border bg-muted/20" />
+                      <div
+                        className="aspect-video w-full border border-border bg-muted/20 bg-cover bg-center"
+                        style={
+                          clip.thumbnailUrl ? { backgroundImage: `url(${clip.thumbnailUrl})` } : undefined
+                        }
+                      />
                       <div>
                         <p className="text-xs font-medium text-foreground">{post.authorDisplayName ?? "Member"}</p>
                         <p className="font-mono text-[10px] text-muted-foreground">@{post.authorHandle ?? "—"}</p>

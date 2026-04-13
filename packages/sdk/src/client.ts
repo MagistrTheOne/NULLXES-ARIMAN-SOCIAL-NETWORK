@@ -1,4 +1,4 @@
-import { createClip, getClips } from "./clips.js";
+import { createClip, getClips, recordClipView, uploadClipVideo } from "./clips.js";
 import { getConversation, listConversations } from "./conversations.js";
 import {
   getMessages,
@@ -28,6 +28,9 @@ import type {
   CreatePostResponse,
   GetClipsParams,
   GetClipsResponse,
+  RecordClipViewResponse,
+  UploadClipVideoParams,
+  UploadClipVideoResponse,
   GetMessagesResponse,
   GetPostsResponse,
   ListConversationSummariesResponse,
@@ -87,6 +90,9 @@ export function createArimanSdk(config: ArimanSdkConfig = {}) {
       getConversation(c, conversationId),
     getClips: (params: GetClipsParams): Promise<GetClipsResponse> => getClips(c, params),
     createClip: (body: CreateClipBody): Promise<CreateClipResponse> => createClip(c, body),
+    uploadClipVideo: (params: UploadClipVideoParams): Promise<UploadClipVideoResponse> =>
+      uploadClipVideo(c, params),
+    recordClipView: (clipId: string): Promise<RecordClipViewResponse> => recordClipView(c, clipId),
   };
 }
 

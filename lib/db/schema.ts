@@ -272,6 +272,14 @@ export const clips = pgTable(
     transcodeState: text("transcode_state").notNull().default("pending"),
     hlsManifestKey: text("hls_manifest_key"),
     posterFrameKey: text("poster_frame_key"),
+    /** Cloudflare Stream video UID */
+    streamPlaybackId: text("stream_playback_id"),
+    /** HLS manifest URL for `<video>` / hls.js */
+    playbackUrl: text("playback_url"),
+    thumbnailUrl: text("thumbnail_url"),
+    viewsCount: integer("views_count").notNull().default(0),
+    /** Denormalized echo count; kept in sync when echoes change on the parent post */
+    echoCount: integer("echo_count").notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
       .notNull()
       .defaultNow(),

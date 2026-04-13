@@ -71,7 +71,7 @@ export function ShellChrome({ children }: { children: React.ReactNode }) {
         <Separator />
         <ShellUserMenu />
       </aside>
-      <main className="min-h-screen flex-1 border-l border-border">{children}</main>
+      <main className="flex min-h-0 min-w-0 flex-1 flex-col border-l border-border">{children}</main>
     </div>
   );
 }

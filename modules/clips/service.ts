@@ -1,7 +1,8 @@
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { clips, identities, posts } from "@/lib/db/schema";
 import { assertIdentityOwned } from "@/modules/posts/service";
+import { enrichPosts } from "@/modules/post-interactions/service";
 
 export async function listClipsForIdentity(userId: string, identityId: string, limit: number) {
   const ok = await assertIdentityOwned(userId, identityId);
@@ -26,19 +27,33 @@ export async function listClipsForIdentity(userId: string, identityId: string, l
     .orderBy(desc(clips.createdAt))
     .limit(limit);
 
-  return rows.map((r) => ({
-    clip: r.clip,
-    post: {
-      id: r.id,
-      authorIdentityId: r.authorIdentityId,
-      communityId: r.communityId,
-      postKind: r.postKind,
-      body: r.body,
-      createdAt: r.createdAt,
-      authorHandle: r.authorHandle,
-      authorDisplayName: r.authorDisplayName,
-    },
-  }));
+  const postIds = rows.map((r) => r.id);
+  const aug = await enrichPosts(postIds, identityId);
+
+  return rows.map((r) => {
+    const a = aug.get(r.id)!;
+    return {
+      clip: {
+        ...r.clip,
+        echoCount: a.echoCount,
+      },
+      post: {
+        id: r.id,
+        authorIdentityId: r.authorIdentityId,
+        communityId: r.communityId,
+        postKind: r.postKind,
+        body: r.body,
+        createdAt: r.createdAt,
+        authorHandle: r.authorHandle,
+        authorDisplayName: r.authorDisplayName,
+        echoCount: a.echoCount,
+        commentCount: a.commentCount,
+        saveCount: a.saveCount,
+        echoedByViewer: a.echoedByViewer,
+        savedByViewer: a.savedByViewer,
+      },
+    };
+  });
 }
 
 export async function createClipStub(userId: string, identityId: string, body: string) {
@@ -58,8 +73,69 @@ export async function createClipStub(userId: string, identityId: string, body: s
       postId: post.id,
       durationMs: 0,
       transcodeState: "pending",
+      echoCount: 0,
+      viewsCount: 0,
     })
     .returning();
 
+  if (!clip) throw new Error("CLIP_CREATE_FAILED");
+
   return { post, clip };
+}
+
+export async function assertUserOwnsClip(userId: string, identityId: string, clipId: string) {
+  const ok = await assertIdentityOwned(userId, identityId);
+  if (!ok) throw new Error("FORBIDDEN_IDENTITY");
+
+  const row = await db
+    .select({ clipId: clips.id })
+    .from(clips)
+    .innerJoin(posts, eq(clips.postId, posts.id))
+    .where(and(eq(clips.id, clipId), eq(posts.authorIdentityId, identityId)))
+    .limit(1);
+
+  if (!row[0]) throw new Error("CLIP_NOT_FOUND");
+}
+
+export async function updateClipFromStreamUpload(
+  userId: string,
+  identityId: string,
+  clipId: string,
+  meta: {
+    streamPlaybackId: string;
+    playbackUrl: string;
+    thumbnailUrl: string | null;
+    durationMs: number;
+    transcodeState: string;
+  },
+) {
+  await assertUserOwnsClip(userId, identityId, clipId);
+
+  const [out] = await db
+    .update(clips)
+    .set({
+      streamPlaybackId: meta.streamPlaybackId,
+      playbackUrl: meta.playbackUrl,
+      thumbnailUrl: meta.thumbnailUrl,
+      durationMs: meta.durationMs,
+      transcodeState: meta.transcodeState,
+    })
+    .where(eq(clips.id, clipId))
+    .returning();
+
+  if (!out) throw new Error("CLIP_UPDATE_FAILED");
+  return out;
+}
+
+export async function incrementClipViewCountForViewer(_userId: string, clipId: string) {
+  const row = await db.select({ id: clips.id }).from(clips).where(eq(clips.id, clipId)).limit(1);
+  if (!row[0]) throw new Error("CLIP_NOT_FOUND");
+
+  const [updated] = await db
+    .update(clips)
+    .set({ viewsCount: sql`${clips.viewsCount} + 1` })
+    .where(eq(clips.id, clipId))
+    .returning({ viewsCount: clips.viewsCount });
+
+  return updated?.viewsCount ?? null;
 }

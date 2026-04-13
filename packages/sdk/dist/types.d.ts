@@ -177,6 +177,11 @@ export type ClipRow = {
     transcodeState: string;
     hlsManifestKey: string | null;
     posterFrameKey: string | null;
+    streamPlaybackId: string | null;
+    playbackUrl: string | null;
+    thumbnailUrl: string | null;
+    viewsCount: number;
+    echoCount: number;
     createdAt: string;
 };
 export type ClipWithPost = {
@@ -197,5 +202,20 @@ export type CreateClipBody = {
 export type CreateClipResponse = {
     post: PostRow;
     clip: ClipRow;
+};
+export type UploadClipVideoParams = {
+    identityId: string;
+    clipId: string;
+    file: File;
+};
+export type UploadClipVideoResponse = {
+    clip: ClipRow;
+    playbackUrl: string;
+    thumbnailUrl: string | null;
+    streamPlaybackId: string;
+    readyToStream: boolean;
+};
+export type RecordClipViewResponse = {
+    viewsCount: number;
 };
 //# sourceMappingURL=types.d.ts.map

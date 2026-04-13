@@ -78,7 +78,34 @@ const spec = {
       },
     },
     "/api/clips": {
-      get: { summary: "List clips (stub)", responses: { "200": { description: "OK" } } },
+      get: {
+        summary: "List clips for identity (with Stream fields and interaction counts)",
+        security: [{ cookieAuth: [] }],
+        responses: { "200": { description: "OK" } },
+      },
+      post: {
+        summary: "Create clip (post + clip row)",
+        security: [{ cookieAuth: [] }],
+        responses: { "201": { description: "Created" } },
+      },
+    },
+    "/api/clips/upload": {
+      post: {
+        summary: "Upload video to Cloudflare Stream and attach to clip",
+        security: [{ cookieAuth: [] }],
+        responses: {
+          "200": { description: "OK" },
+          "502": { description: "Upstream / upload error" },
+          "503": { description: "Stream not configured" },
+        },
+      },
+    },
+    "/api/clips/{clipId}/view": {
+      post: {
+        summary: "Increment clip viewsCount",
+        security: [{ cookieAuth: [] }],
+        responses: { "200": { description: "OK" }, "404": { description: "Not found" } },
+      },
     },
   },
   components: {

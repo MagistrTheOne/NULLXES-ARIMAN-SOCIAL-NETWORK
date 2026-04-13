@@ -1,4 +1,4 @@
-import { createClip, getClips } from "./clips.js";
+import { createClip, getClips, recordClipView, uploadClipVideo } from "./clips.js";
 import { getConversation, listConversations } from "./conversations.js";
 import { getMessages, listConversationSummaries, markConversationRead, sendMessage, } from "./messaging.js";
 import { createPost, getFeed, getMe, getPosts, patchMe } from "./posts.js";
@@ -38,6 +38,8 @@ export function createArimanSdk(config = {}) {
         getConversation: (conversationId) => getConversation(c, conversationId),
         getClips: (params) => getClips(c, params),
         createClip: (body) => createClip(c, body),
+        uploadClipVideo: (params) => uploadClipVideo(c, params),
+        recordClipView: (clipId) => recordClipView(c, clipId),
     };
 }
 //# sourceMappingURL=client.js.map
