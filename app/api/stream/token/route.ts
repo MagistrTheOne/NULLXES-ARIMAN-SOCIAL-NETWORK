@@ -2,7 +2,9 @@ import { NextResponse } from "next/server";
 import { getSessionUserId } from "@/lib/api/session";
 import { withApiSecurityHeaders } from "@/lib/security/headers";
 import { rateLimitSync } from "@/lib/security/rate-limit";
+import { z } from "@/lib/security/validation";
 import { streamServerClient } from "@/lib/stream/server";
+import { assertMember } from "@/modules/messages/service";
 import { ensurePrimaryIdentity } from "@/modules/users/service";
 
 export const runtime = "nodejs";
@@ -29,7 +31,26 @@ export async function GET(request: Request) {
     return withApiSecurityHeaders(NextResponse.json({ error: "Unauthorized" }, { status: 401 }));
   }
 
+  const { searchParams } = new URL(request.url);
+  const parsedQuery = z
+    .object({
+      conversationId: z.uuid(),
+    })
+    .safeParse({
+      conversationId: searchParams.get("conversationId") ?? "",
+    });
+  if (!parsedQuery.success) {
+    return withApiSecurityHeaders(
+      NextResponse.json({ error: "Invalid query", issues: parsedQuery.error.issues }, { status: 400 }),
+    );
+  }
+
   try {
+    const isMember = await assertMember(userId, parsedQuery.data.conversationId);
+    if (!isMember) {
+      return withApiSecurityHeaders(NextResponse.json({ error: "Forbidden" }, { status: 403 }));
+    }
+
     const identities = await ensurePrimaryIdentity(userId);
     const primary = identities[0] ?? null;
     if (!primary) {
@@ -37,11 +58,12 @@ export async function GET(request: Request) {
     }
 
     const stream = streamServerClient();
-    const streamUserId = `ariman-${primary.id}`;
+    const streamUserId = `ariman-user-${userId}`;
     const apiKey = process.env.STREAM_API_KEY ?? "";
     const token = stream.generateUserToken({ user_id: streamUserId, validity_in_seconds: 3600 });
     const callType = process.env.STREAM_DEFAULT_CALL_TYPE ?? "default";
-    const callId = `conversation-${primary.id}`;
+    const callId = `conversation-${parsedQuery.data.conversationId}`;
+    const channelId = `conversation-${parsedQuery.data.conversationId}`;
 
     await stream.upsertUsers([
       {
@@ -57,6 +79,8 @@ export async function GET(request: Request) {
         token,
         callType,
         callId,
+        channelType: "messaging",
+        channelId,
         user: {
           id: streamUserId,
           name: primary.displayName,

@@ -130,3 +130,40 @@
     @apply font-sans;
   }
 }
+
+@layer components {
+  .ariman-stream .str-chat,
+  .ariman-stream .str-chat__channel,
+  .ariman-stream .str-chat__main-panel {
+    background: var(--background);
+    color: var(--foreground);
+  }
+
+  .ariman-stream .str-chat__channel-header,
+  .ariman-stream .str-chat__message-input {
+    border-color: var(--border);
+    background: color-mix(in oklch, var(--background) 92%, black 8%);
+  }
+
+  .ariman-stream .str-chat__message-bubble,
+  .ariman-stream .str-chat__message-simple__actions {
+    border-radius: 0;
+  }
+
+  .ariman-stream-video .str-video__participant-view {
+    border: 1px solid var(--border);
+    border-radius: 0;
+    background: var(--background);
+  }
+
+  .ariman-stream-video .str-video__call-controls__button {
+    border: 1px solid var(--border);
+    border-radius: 0;
+    background: var(--background);
+    color: var(--foreground);
+  }
+
+  .ariman-stream-video .str-video__call-controls__button:hover {
+    background: var(--muted);
+  }
+}
